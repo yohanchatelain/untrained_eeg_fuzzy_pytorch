@@ -1,15 +1,16 @@
-"""Phase 1, step 2: probe every instance's features on the ds003478 tasks.
+"""Phase 1, step 2: probe every instance's features on a dataset's tasks.
 
-Tasks and probe: src/untrained_eeg/tasks.py (eyes closed vs open, BDI per condition).
+Tasks and probe: src/untrained_eeg/tasks.py (per dataset; ds003478 by default).
 
 Every instance (seed or checkpoint) is probed with the config's CV split. The first
 instance of each extractor is also probed with --cv-seeds, the CV-split variability.
 
-Reads results/phase1/ds003478/features (phase1_features.py). Writes, next to it:
+Reads results/phase1/<dataset>/features (phase1_features.py). Writes, next to it:
   metrics.csv            extractor, group, instance, task, cv_seed, n, auc, balanced_accuracy
   predictions.csv.gz     out-of-fold P(class 1) per sample, for the ensembles of phase 2
 
-    python scripts/phase1_probe.py
+    python scripts/phase1_probe.py                                   # ds003478
+    python scripts/phase1_probe.py --config configs/ds004504.yaml
 """
 
 import argparse
@@ -20,8 +21,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from untrained_eeg.data import load_config, load_participants
-from untrained_eeg.tasks import TASKS, probe, task_data
+from untrained_eeg.data import load_config
+from untrained_eeg.tasks import probe, task_data, task_labels, task_names
 
 
 def seed_range(text):
@@ -36,14 +37,14 @@ parser.add_argument("--cv-seeds", type=seed_range, default=list(range(30)),
 args = parser.parse_args()
 
 cfg = load_config(args.config) if args.config else load_config()
-root = Path(cfg["results_dir"]) / "phase1" / "ds003478"
-labels = load_participants(cfg).set_index("participant_id")["label"]
+root = Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"]
+labels = task_labels(cfg)
 metrics, preds = [], []
 for ext_dir in sorted(p for p in (root / "features").iterdir() if p.is_dir()):
     for i, path in enumerate(sorted(ext_dir.glob("*.npz"))):
         f = np.load(path)
         cv_seeds = args.cv_seeds if i == 0 else [cfg["cv_seed"]]
-        for task in TASKS:
+        for task in task_names(cfg):
             X, y, groups, ids = task_data(f["feats"], f["cond"], f["participant_id"], task, labels)
             for cv_seed in cv_seeds:
                 prob, auc, bacc = probe(X, y, groups, task, cv_seed, cfg["cv_folds"])

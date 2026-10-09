@@ -1,4 +1,4 @@
-"""Phase 1, step 1: block features of every model instance on ds003478.
+"""Phase 1, step 1: block features of every model instance on one dataset (ds003478 by default).
 
 An instance is one untrained model (one weight seed) or one pretrained checkpoint. Each
 instance embeds every 2 s window; the windows of each 1-minute block are averaged, giving
@@ -12,11 +12,13 @@ Extractors (each with the input its weights expect):
   shallow_pretrained       pretrained ShallowFBCSPNet, 2 checkpoints (22 channels, 250 Hz,
                            4-38 Hz, exponential moving standardization: "bcic2a" input)
 
-Writes results/phase1/ds003478/features/<extractor>/<instance>.npz; existing files are
+Extractors whose input the dataset lacks (channels, or a preprocessing variant) are skipped.
+Writes results/phase1/<dataset>/features/<extractor>/<instance>.npz; existing files are
 skipped, so an interrupted job can be resubmitted. Data and weights are downloaded if missing
 (weights: bash scripts/00_download_pretrained.sh).
 
-    python scripts/phase1_features.py                    # everything, 30 seeds
+    python scripts/phase1_features.py                    # everything, 30 seeds, ds003478
+    python scripts/phase1_features.py --config configs/ds004504.yaml
     python scripts/phase1_features.py --extractors eegnetv4 --seeds 0-4
 """
 
@@ -78,12 +80,17 @@ args = parser.parse_args()
 
 torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", 1)))
 cfg = load_config(args.config) if args.config else load_config()
-out_root = Path(cfg["results_dir"]) / "phase1" / "ds003478" / "features"
+out_root = Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"] / "features"
 per_block = int(cfg["segment_s"] / cfg["window_s"])  # 30 windows of 2 s per 1-minute block
 data = {}  # preprocessing variant -> (participants, {participant_id: (X, cond)})
 
 for name in args.extractors:
     group, variant, subset = EXTRACTORS[name]
+    have = {c.upper() for c in cfg["channels"]}
+    if (variant != "standard" and variant not in cfg.get("preprocessing", {})) or \
+            (subset and not {c.upper() for c in subset} <= have):
+        print(f"{name}: skipped, this dataset lacks its input", flush=True)
+        continue
     if variant not in data:
         data[variant] = load_dataset(variant_config(cfg, variant))
     participants, windows = data[variant]

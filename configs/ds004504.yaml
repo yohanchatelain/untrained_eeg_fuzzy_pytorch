@@ -1,6 +1,5 @@
 # OpenNeuro ds004504: resting EEG, eyes closed, 88 participants (Alzheimer's disease,
 # frontotemporal dementia, healthy controls), 19 channels (10-20). Tasks 3 and 4.
-# Download only for now; preprocessing and labels come with the task scripts.
 
 # Leave as null to use data/raw/ds004504 in the repo, downloaded automatically the first
 # time (raw recordings only, 2.8 GB; the authors' preprocessed derivatives are skipped).
@@ -15,3 +14,27 @@ openneuro:
 
 cache_dir: data/cache/ds004504
 results_dir: results
+
+# --- Recordings and preprocessing ----------------------------------------
+# Continuous resting recordings, cut into 60 s segments of 2 s windows (the shape of
+# ds003478's blocks); each participant's features are averaged over all its segments.
+l_freq: 1.0
+h_freq: 40.0
+sfreq: 128
+segment_s: 60
+window_s: 2
+max_windows: null
+
+# --- Probe ---------------------------------------------------------------
+cv_folds: 5
+cv_seed: 0
+
+recording: "{pid}/eeg/{pid}_task-eyesclosed_eeg.set"
+condition: closed
+channels: [Fp1, Fp2, F3, F4, C3, C4, P3, P4, O1, O2, F7, F8, T3, T4, T5, T6, Fz, Cz, Pz]
+
+# Tasks: participants.tsv column Group (A = Alzheimer's, F = frontotemporal dementia,
+# C = control). Label 1 = patient, 0 = control; the other group is left out.
+tasks:
+  ad_vs_control: {column: Group, positive: [A], negative: [C]}
+  ftd_vs_control: {column: Group, positive: [F], negative: [C]}

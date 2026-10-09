@@ -69,7 +69,14 @@ def _data_dir(cfg):
 
 
 def load_participants(cfg):
-    """Participants with a high or low BDI label, exclusions removed."""
+    """Participants and their labels.
+
+    ds003478: those with a high or low BDI label (column `label`), exclusions removed.
+    Datasets with `tasks` in their config: everyone, with one column per task
+    (1 = positive group, 0 = negative group, NaN = not in that task).
+    """
+    if "tasks" in cfg:
+        return _task_participants(cfg)
     df = pd.read_csv(_data_dir(cfg) / "participants.tsv", sep="\t")
     df = df[~df["Original_ID"].isin(cfg["exclude_original_ids"])]
     df = df.dropna(subset=["BDI"])
@@ -78,6 +85,47 @@ def load_participants(cfg):
     df = df[low | high].copy()
     df["label"] = (df["BDI"] >= cfg["bdi_high_min"]).astype(int)  # 1 = high BDI
     return df[["participant_id", "Original_ID", "BDI", "label"]].reset_index(drop=True)
+
+
+def _task_participants(cfg):
+    df = pd.read_csv(_data_dir(cfg) / "participants.tsv", sep="\t")
+    df["group"] = df["participant_id"].str.extract(r"sub-([a-z]+)", expand=False)  # e.g. pd, hc
+    for task, t in cfg["tasks"].items():
+        df[task] = np.where(df[t["column"]].isin(t["positive"]), 1.0,
+                            np.where(df[t["column"]].isin(t["negative"]), 0.0, np.nan))
+    return df[["participant_id", *cfg["tasks"]]].reset_index(drop=True)
+
+
+def recording_path(cfg, participant_id):
+    """The participant's EEG file, from the config's `recording` template."""
+    session = None
+    if "sessions" in cfg:
+        session = cfg["sessions"][participant_id.removeprefix("sub-").rstrip("0123456789")]
+    return _data_dir(cfg) / cfg["recording"].format(pid=participant_id, session=session)
+
+
+def preprocess_resting(cfg, participant_id):
+    """Windows of a continuous resting recording, grouped in `segment_s` segments.
+
+    Same steps as ds003478: channels, average reference, band-pass, resample, microvolts.
+    Then every complete segment is cut into windows; a partial last segment is dropped.
+    """
+    import mne
+
+    path = recording_path(cfg, participant_id)
+    read = mne.io.read_raw_eeglab if path.suffix == ".set" else mne.io.read_raw_bdf
+    raw = read(path, preload=True, verbose="error")
+    raw.pick(cfg["channels"])
+    raw.set_eeg_reference("average", verbose="error")
+    raw.filter(cfg["l_freq"], cfg["h_freq"], verbose="error")
+    raw.resample(cfg["sfreq"], verbose="error")
+    data = raw.get_data() * 1e6
+    win = int(cfg["window_s"] * cfg["sfreq"])
+    n_win = int(cfg["segment_s"] / cfg["window_s"])
+    n_seg = data.shape[1] // (n_win * win)
+    seg = data[:, : n_seg * n_win * win]
+    X = seg.reshape(len(seg), n_seg * n_win, win).transpose(1, 0, 2)
+    return X.astype(np.float32), np.array([cfg["condition"]] * len(X)), raw.ch_names
 
 
 def find_blocks(events, segment_s):
@@ -138,11 +186,13 @@ def preprocess_subject(cfg, participant_id):
 
 def load_windows(cfg, participant_id, build=True):
     """Windows for one participant, read from the cache (built if missing)."""
-    path = Path(cfg["cache_dir"]) / f"{participant_id}_run-{cfg['run']}.npz"
+    name = f"{participant_id}_run-{cfg['run']}" if "run" in cfg else participant_id
+    path = Path(cfg["cache_dir"]) / f"{name}.npz"
     if not path.exists():
         if not build:
             raise SystemExit(f"Missing cache {path}. Run scripts/01_run_untrained.py first.")
-        X, cond, ch_names = preprocess_subject(cfg, participant_id)
+        prep = preprocess_resting if "recording" in cfg else preprocess_subject
+        X, cond, ch_names = prep(cfg, participant_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez(path, X=X, cond=cond, ch_names=ch_names)
     f = np.load(path)

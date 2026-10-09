@@ -1,4 +1,4 @@
-"""Phase 2: ensembles of K model instances on ds003478, and how they change with K.
+"""Phase 2: ensembles of K model instances on one dataset, and how they change with K.
 
 A pool is a set of instances: the 30 seeds of one untrained extractor, the pretrained
 checkpoints, or a mix of extractors. For each K (1 .. pool size) and up to --draws distinct
@@ -10,14 +10,15 @@ sets of K instances (all of them when fewer exist, fixed RNG), the K instances a
 All instances share the same fixed CV split (cv_seed of the config), so their out-of-fold
 predictions can be combined sample by sample.
 
-Reads results/phase1/ds003478/ (features/ and predictions.csv.gz). Writes results/phase2/ds003478/:
+Reads results/phase1/<dataset>/ (features/ and predictions.csv.gz). Writes results/phase2/<dataset>/:
   draws.csv     pool, method, task, k, draw, instances, auc
   summary.csv   per pool x method x task x k: AUC mean and SD over draws, median per-sample
                 SD of the score over draws, flip rate (share of samples whose class differs
                 between draws)
   curves.png    AUC and spread against K
 
-    python scripts/phase2_ensembles.py --workers 8
+    python scripts/phase2_ensembles.py --workers 8                   # ds003478
+    python scripts/phase2_ensembles.py --config configs/ds004504.yaml --workers 8
 """
 
 import argparse
@@ -36,8 +37,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from untrained_eeg.data import load_config, load_participants
-from untrained_eeg.tasks import TASKS, probe, task_data
+from untrained_eeg.data import load_config
+from untrained_eeg.tasks import probe, task_data, task_labels, task_names
 
 UNTRAINED = ["cnn1d", "shallow", "eegnet", "eegnet_3ch", "shallow_bcic2a"]
 PRETRAINED = ["eegnetv4", "shallow_pretrained"]
@@ -78,16 +79,19 @@ parser.add_argument("--workers", type=int, default=1)
 args = parser.parse_args()
 
 cfg = load_config(args.config) if args.config else load_config()
-src = Path(cfg["results_dir"]) / "phase1" / "ds003478"
-out = Path(cfg["results_dir"]) / "phase2" / "ds003478"
+src = Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"]
+out = Path(cfg["results_dir"]) / "phase2" / cfg["openneuro"]["id"]
 out.mkdir(parents=True, exist_ok=True)
-labels = load_participants(cfg).set_index("participant_id")["label"]
+labels = task_labels(cfg)
+TASKS = task_names(cfg)
 preds = pd.read_csv(src / "predictions.csv.gz")
 preds = preds[preds.cv_seed == cfg["cv_seed"]]
 rng = np.random.default_rng(0)
 rows, summary = [], []
 
 for pool, extractors in POOLS.items():
+    if not set(extractors) <= set(preds.extractor):  # e.g. no BCI IV 2a input on this dataset
+        continue
     p = preds[preds.extractor.isin(extractors)]
     insts = sorted(set(zip(p.extractor, p.instance)))  # (extractor, instance) members
     for task in TASKS:
@@ -134,7 +138,8 @@ summary = pd.DataFrame(summary)
 summary.to_csv(out / "summary.csv", index=False, float_format="%.6g")
 
 # AUC against K, one panel per task, one line per pool (averaged predictions).
-fig, axes = plt.subplots(1, len(TASKS), figsize=(13, 4), sharex=True)
+fig, axes = plt.subplots(1, len(TASKS), figsize=(4.4 * len(TASKS), 4), sharex=True, squeeze=False)
+axes = axes[0]
 for ax, task in zip(axes, TASKS):
     for pool, g in summary[(summary.task == task) & (summary.method == "average")].groupby("pool"):
         ax.plot(g.k, g.auc_mean, label=pool, lw=2 if pool in PRETRAINED + ["pretrained_mix"] else 1)
