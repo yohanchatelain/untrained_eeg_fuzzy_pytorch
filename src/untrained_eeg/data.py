@@ -34,6 +34,19 @@ def load_config(path=REPO / "configs" / "ds003478.yaml"):
     return cfg
 
 
+def variant_config(cfg, name):
+    """The config for one preprocessing variant (see `preprocessing` in the config).
+
+    "standard" is the top-level settings. Other variants override some of them (e.g. the
+    input a pretrained model was trained on) and get their own cache folder.
+    """
+    if name == "standard":
+        return cfg
+    out = {**cfg, **cfg["preprocessing"][name]}
+    out["cache_dir"] = Path(cfg["cache_dir"]) / name
+    return out
+
+
 def _data_dir(cfg):
     """The BIDS dataset folder, downloaded first if it is not there yet.
 
@@ -98,9 +111,15 @@ def preprocess_subject(cfg, participant_id):
     raw = mne.io.read_raw_eeglab(eeg_dir / f"{stem}_eeg.set", preload=True, verbose="error")
     raw.pick(cfg["channels"])  # same channels, same order, for everyone
     raw.set_eeg_reference("average", verbose="error")
+    if cfg.get("pick"):  # a variant's subset, taken after the 60-channel average reference
+        raw.pick([c.upper() for c in cfg["pick"]])
     raw.filter(cfg["l_freq"], cfg["h_freq"], verbose="error")
     raw.resample(cfg["sfreq"], verbose="error")
     data = raw.get_data() * 1e6  # volts -> microvolts
+    if cfg.get("ems"):  # as in braindecode's tutorials, on the continuous recording
+        from braindecode.preprocessing import exponential_moving_standardize
+
+        data = exponential_moving_standardize(data, **cfg["ems"])
 
     events = pd.read_csv(eeg_dir / f"{stem}_events.tsv", sep="\t")
     sf, win = cfg["sfreq"], int(cfg["window_s"] * cfg["sfreq"])
