@@ -35,6 +35,16 @@ accept other channel sets through electrode names or positions).
 | REVE | base, large ([brain-bzh/reve-base](https://huggingface.co/brain-bzh/reve-base)) | any (positions) · 200 Hz | 92 sources, 61,415 h: OpenNeuro, MOABB, TUH ([paper](https://arxiv.org/abs/2510.21585), appendix) | Registration required |
 | Masking ablations | ~60 MAE/JEPA checkpoints ([PierreGtch](https://huggingface.co/PierreGtch)) | ? | ? | ? |
 
+## Ported
+
+| Model | Loader | Test | Notes |
+|---|---|---|---|
+| EEGNetv4 (12) | `load_eegnetv4` in `src/untrained_eeg/pretrained.py`; weights from `scripts/00_download_pretrained.sh` | `tests/test_pretrained.py`: bit-identical features to braindecode 1.8.1 | Feed C3, Cz, C4 (`C3, CZ, C4` in our config) at 128 Hz, in microvolts |
+
+Input scale of EEGNetv4: the cards do not say. The first batch-norm's running variance gives
+the input SD seen in training: 3–35 for 10 checkpoints (microvolts, like our cache), but ~340
+for Cho2017 and ~8×10⁶ for Ofner2017 (another unit). Rescale for those two, or leave them out.
+
 ## Leakage against our candidate tasks
 
 A pretrained model can only be evaluated on a dataset it was not pretrained on. Checked by

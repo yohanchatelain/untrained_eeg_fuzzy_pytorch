@@ -15,7 +15,10 @@ The repo is public and used by Brainhack beginners: keep it clean, short, and we
   Fuzzy environment); `tests/test_models.py` checks they stay bit-identical to braindecode 1.8.1.
 - Trained models: all publicly available pretrained checkpoints for scalp EEG (CNNs and foundation
   models such as LaBraM). We do not train our own models. Pretrained weights must load into
-  plain-PyTorch copies in `models.py` (no braindecode in Fuzzy).
+  plain-PyTorch copies in `models.py` (no braindecode in Fuzzy); loaders in `pretrained.py`,
+  checked bit-identical to braindecode 1.8.1 by `tests/test_pretrained.py`. Weights go in `data/pretrained/`.
+- Run `tests/test_models.py` and `tests/test_pretrained.py` with `--noconftest` outside the
+  container (`tests/conftest.py` is for the EC experiment and needs the Fuzzy container).
 - Open datasets only (no registration-gated data). An evaluation dataset must not be in a
   checkpoint's pretraining data (leakage).
 - Same seed ≠ same weights across PyTorch builds (last-bit differences, e.g. torch 2.14 vs Fuzzy 2.2):
