@@ -95,12 +95,76 @@ def load_participants(cfg):
 
 
 def _task_participants(cfg):
-    df = pd.read_csv(_data_dir(cfg) / "participants.tsv", sep="\t")
+    if "participants" in cfg:  # a fixed list (BNCI has no participants.tsv)
+        df = pd.DataFrame({"participant_id": cfg["participants"]})
+        return df.assign(**{task: np.nan for task in cfg["tasks"]})  # labels come from trials
+    if "participants_file" in cfg:  # e.g. LEMON's META table: id in the first column
+        df = pd.read_csv(_data_dir(cfg) / cfg["participants_file"])
+        df = df.rename(columns={df.columns[0]: "participant_id"})
+        have = {p.name for p in (_data_dir(cfg) / cfg["recordings_dir"]).iterdir()}
+        df = df[df["participant_id"].isin(have)]  # those with EEG
+    else:
+        df = pd.read_csv(_data_dir(cfg) / "participants.tsv", sep="\t")
     df["group"] = df["participant_id"].str.extract(r"sub-([a-z]+)", expand=False)  # e.g. pd, hc
     for task, t in cfg["tasks"].items():
         df[task] = np.where(df[t["column"]].isin(t["positive"]), 1.0,
                             np.where(df[t["column"]].isin(t["negative"]), 0.0, np.nan))
     return df[["participant_id", *cfg["tasks"]]].reset_index(drop=True)
+
+
+def _clean(raw, cfg):
+    """Shared preprocessing of a loaded MNE recording: (n_channels, n_samples) in microvolts.
+
+    Channels, average reference, a variant's channel subset (`pick`), band-pass, resample,
+    microvolts, and a variant's exponential moving standardization (`ems`).
+    """
+    raw.pick(cfg["channels"])
+    raw.set_eeg_reference("average", verbose="error")
+    if cfg.get("pick"):
+        raw.pick(cfg["pick"])
+    raw.filter(cfg["l_freq"], cfg["h_freq"], verbose="error")
+    raw.resample(cfg["sfreq"], verbose="error")
+    data = raw.get_data() * 1e6
+    if cfg.get("ems"):
+        from braindecode.preprocessing import exponential_moving_standardize
+
+        data = exponential_moving_standardize(data, **cfg["ems"])
+    return data, raw.ch_names
+
+
+def preprocess_bnci(cfg, participant_id):
+    """BNCI 2014-001 (BCI IV 2a): left and right hand trials of both sessions.
+
+    Each run is cleaned as one recording, then every trial gives the windows of the
+    imagery period (`trial_window`, seconds after the trial start; the cue is at 2 s).
+    `cond` is the trial's class ("left", "right"); feet and tongue trials are dropped.
+    """
+    import mne
+    import scipy.io
+
+    win = int(cfg["window_s"] * cfg["sfreq"])
+    t0, t1 = cfg["trial_window"]
+    X, cond = [], []
+    for session in "TE":
+        mat = scipy.io.loadmat(_data_dir(cfg) / f"{participant_id}{session}.mat",
+                               squeeze_me=True, struct_as_record=False)
+        for run in mat["data"]:
+            if not np.size(run.trial):
+                continue  # the first runs of a session have no trials (EOG calibration)
+            info = mne.create_info(cfg["all_channels"], run.fs, "eeg")
+            raw = mne.io.RawArray(run.X.T * 1e-6, info, verbose="error")  # stored in microvolts
+            data, ch_names = _clean(raw, cfg)
+            scale = cfg["sfreq"] / run.fs
+            for onset, y in zip(np.atleast_1d(run.trial), np.atleast_1d(run.y)):
+                name = {1: "left", 2: "right"}.get(int(y))
+                if name is None:
+                    continue
+                start = int(round((onset - 1) * scale + t0 * cfg["sfreq"]))  # onset: 1-based sample
+                n = int((t1 - t0) / cfg["window_s"])
+                seg = data[:, start : start + n * win]
+                X.append(seg.reshape(len(seg), n, win).transpose(1, 0, 2))
+                cond += [name] * n
+    return np.concatenate(X).astype(np.float32), np.array(cond), ch_names
 
 
 def recording_path(cfg, participant_id):
@@ -121,18 +185,45 @@ def preprocess_resting(cfg, participant_id):
 
     path = recording_path(cfg, participant_id)
     read = mne.io.read_raw_eeglab if path.suffix == ".set" else mne.io.read_raw_bdf
-    raw = read(path, preload=True, verbose="error")
-    raw.pick(cfg["channels"])
-    raw.set_eeg_reference("average", verbose="error")
-    raw.filter(cfg["l_freq"], cfg["h_freq"], verbose="error")
-    raw.resample(cfg["sfreq"], verbose="error")
-    data = raw.get_data() * 1e6
+    data, ch_names = _clean(read(path, preload=True, verbose="error"), cfg)
+    X = _segments(data, cfg)
+    return X, np.array([cfg["condition"]] * len(X)), ch_names
+
+
+def _segments(data, cfg):
+    """Windows of every complete `segment_s` segment: (n_windows, n_channels, n_times)."""
     win = int(cfg["window_s"] * cfg["sfreq"])
     n_win = int(cfg["segment_s"] / cfg["window_s"])
     n_seg = data.shape[1] // (n_win * win)
     seg = data[:, : n_seg * n_win * win]
-    X = seg.reshape(len(seg), n_seg * n_win, win).transpose(1, 0, 2)
-    return X.astype(np.float32), np.array([cfg["condition"]] * len(X)), raw.ch_names
+    return seg.reshape(len(seg), n_seg * n_win, win).transpose(1, 0, 2).astype(np.float32)
+
+
+def preprocess_lemon(cfg, participant_id):
+    """MPI-LEMON preprocessed eyes-closed and eyes-open recordings, cut like resting ones.
+
+    The authors removed bad channels per recording (57-61 left); the missing ones are
+    rebuilt by spherical-spline interpolation, so everyone has the same `channels`.
+    """
+    import mne
+
+    X, cond = [], []
+    for condition, tag in (("closed", "EC"), ("open", "EO")):
+        path = _data_dir(cfg) / cfg["recording"].format(pid=participant_id, tag=tag)
+        raw = mne.io.read_raw_eeglab(path, preload=True, verbose="error")
+        missing = [c for c in cfg["channels"] if c not in raw.ch_names]
+        if missing:
+            zeros = mne.io.RawArray(np.zeros((len(missing), raw.n_times)),
+                                    mne.create_info(missing, raw.info["sfreq"], "eeg"), verbose="error")
+            raw.add_channels([zeros], force_update_info=True)
+            raw.set_montage("standard_1005", verbose="error")
+            raw.info["bads"] = missing
+            raw.interpolate_bads(reset_bads=True, verbose="error")
+        data, ch_names = _clean(raw, cfg)
+        w = _segments(data, cfg)
+        X.append(w)
+        cond += [condition] * len(w)
+    return np.concatenate(X), np.array(cond), ch_names
 
 
 def find_blocks(events, segment_s):
@@ -198,7 +289,8 @@ def load_windows(cfg, participant_id, build=True):
     if not path.exists():
         if not build:
             raise SystemExit(f"Missing cache {path}. Run scripts/01_run_untrained.py first.")
-        prep = preprocess_resting if "recording" in cfg else preprocess_subject
+        prep = {"resting": preprocess_resting, "bnci": preprocess_bnci,
+                "lemon": preprocess_lemon}.get(cfg.get("loader"), preprocess_subject)
         X, cond, ch_names = prep(cfg, participant_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez(path, X=X, cond=cond, ch_names=ch_names)

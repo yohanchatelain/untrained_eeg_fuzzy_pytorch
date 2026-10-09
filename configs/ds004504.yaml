@@ -29,6 +29,7 @@ max_windows: null
 cv_folds: 5
 cv_seed: 0
 
+loader: resting
 recording: "{pid}/eeg/{pid}_task-eyesclosed_eeg.set"
 condition: closed
 channels: [Fp1, Fp2, F3, F4, C3, C4, P3, P4, O1, O2, F7, F8, T3, T4, T5, T6, Fz, Cz, Pz]

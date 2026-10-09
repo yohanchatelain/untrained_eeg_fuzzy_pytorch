@@ -53,10 +53,11 @@ EXTRACTORS = {  # name: (group, preprocessing variant, channel subset or None)
 SCATTERING_J = range(3, 9)  # largest wavelet scale 2**J samples: 62 ms to 2 s at 128 Hz
 
 
-def instances(name, seeds):
+def instances(name, seeds, cfg):
     """(instance id, function n_chans, n_times -> model) for every instance of an extractor."""
-    if name == "eegnetv4":
-        return [(d, lambda c, t, d=d: load_eegnetv4(d, t)) for d in EEGNETV4_USED]
+    if name == "eegnetv4":  # minus checkpoints trained on this dataset (config `exclude`)
+        used = [d for d in EEGNETV4_USED if d not in cfg.get("exclude", {}).get("eegnetv4", [])]
+        return [(d, lambda c, t, d=d: load_eegnetv4(d, t)) for d in used]
     if name == "shallow_pretrained":
         return [(k, lambda c, t, k=k: load_shallow(k, t)) for k in SHALLOW_CHECKPOINTS]
     if name == "scattering":
@@ -92,6 +93,9 @@ data = {}  # preprocessing variant -> (participants, {participant_id: (X, cond)}
 
 for name in args.extractors:
     group, variant, subset = EXTRACTORS[name]
+    if name in cfg.get("exclude", {}).get("extractors", []):
+        print(f"{name}: skipped, trained on this dataset (leakage)", flush=True)
+        continue
     have = {c.upper() for c in cfg["channels"]}
     if (variant != "standard" and variant not in cfg.get("preprocessing", {})) or \
             (subset and not {c.upper() for c in subset} <= have):
@@ -106,7 +110,7 @@ for name in args.extractors:
         windows = {p: (X[:, idx], cond) for p, (X, cond) in windows.items()}
     pids = participants["participant_id"].tolist()
     _, n_chans, n_times = windows[pids[0]][0].shape
-    for inst, make in instances(name, args.seeds):
+    for inst, make in instances(name, args.seeds, cfg):
         out = out_root / name / f"{inst}.npz"
         if out.exists():
             continue

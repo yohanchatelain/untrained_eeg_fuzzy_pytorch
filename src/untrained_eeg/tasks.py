@@ -7,8 +7,13 @@ ds003478:
   bdi_closed   high vs low BDI, one sample per participant (mean of its eyes-closed blocks)
   bdi_open     the same with eyes-open blocks
 Other datasets: the `tasks` of their config, one sample per participant (mean of all its
-segments), label 1 = patient group, 0 = control.
+segments, or of one condition's for a task named <name>_closed / <name>_open), label 1 =
+patient (or older) group, 0 = control (or younger).
+mi_left_right  BNCI 2014-001 left vs right hand imagery, one sample per trial; each subject
+               gets its own stratified 5-fold CV (within subject), AUC over all trials
 """
+
+WITHIN_SUBJECT = {"mi_left_right"}  # trial-level tasks probed separately in each subject
 
 import numpy as np
 import pandas as pd
@@ -39,19 +44,34 @@ def task_data(feats, cond, pid, task, labels):
         block = pd.Series(pid[keep]).groupby(pid[keep]).cumcount().to_numpy()
         ids = [f"{p}/block{b}" for p, b in zip(pid[keep], block)]
         return feats[keep], (cond[keep] == "closed").astype(int), pid[keep], ids
+    if task in WITHIN_SUBJECT:  # one row per trial, class in cond
+        keep = np.isin(cond, ["left", "right"])
+        trial = pd.Series(pid[keep]).groupby(pid[keep]).cumcount().to_numpy()
+        ids = [f"{p}/trial{k}" for p, k in zip(pid[keep], trial)]
+        return feats[keep], (cond[keep] == "right").astype(int), pid[keep], ids
     if task.startswith("bdi_"):
         condition = task.removeprefix("bdi_")
         people = [p for p in labels.index if ((pid == p) & (cond == condition)).any()]
         X = np.stack([feats[(pid == p) & (cond == condition)].mean(axis=0) for p in people])
         return X, labels.loc[people, "label"].to_numpy(), np.array(people), people
-    people = [p for p in labels.index if not np.isnan(labels.loc[p, task]) and (pid == p).any()]
-    X = np.stack([feats[pid == p].mean(axis=0) for p in people])
+    rows = np.ones(len(pid), bool)  # "<task>_closed" / "<task>_open": one condition only
+    if task.endswith(("_closed", "_open")):
+        rows = cond == task.rpartition("_")[2]
+    people = [p for p in labels.index if not np.isnan(labels.loc[p, task]) and ((pid == p) & rows).any()]
+    X = np.stack([feats[(pid == p) & rows].mean(axis=0) for p in people])
     return X, labels.loc[people, task].to_numpy().astype(int), np.array(people), people
 
 
 def probe(X, y, groups, task, cv_seed, folds):
     """Out-of-fold P(class 1), AUC and balanced accuracy."""
     clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=5000))
+    if task in WITHIN_SUBJECT:  # a probe per subject, out-of-fold P kept in the input order
+        prob = np.empty(len(y))
+        for g in np.unique(groups):
+            i = np.flatnonzero(groups == g)
+            cv = StratifiedKFold(folds, shuffle=True, random_state=cv_seed)
+            prob[i] = cross_val_predict(clf, X[i], y[i], cv=cv, method="predict_proba")[:, 1]
+        return prob, roc_auc_score(y, prob), balanced_accuracy_score(y, prob > 0.5)
     if task == "ec_eo":  # blocks: keep each participant's blocks in one fold
         cv = StratifiedGroupKFold(folds, shuffle=True, random_state=cv_seed)
     else:  # one sample per participant: no groups needed

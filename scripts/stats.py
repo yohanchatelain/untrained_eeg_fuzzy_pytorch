@@ -78,7 +78,7 @@ for d in sorted((REPO / "results" / "phase1").iterdir()):
         for e, g in pt.groupby("extractor"):  # ensemble of all instances vs chance
             w = g.pivot_table(index="sample", columns="instance", values="prob")
             y = g.drop_duplicates("sample").set_index("sample").label.loc[w.index].to_numpy()
-            groups = np.array([s.split("/")[0] for s in w.index]) if task == "ec_eo" else None
+            groups = np.array([s.split("/")[0] for s in w.index]) if task in ("ec_eo", "mi_left_right") else None
             obs, p = permutation_p(y, w.mean(axis=1).to_numpy(), groups, rng)
             rows.append(dict(test="above_chance", dataset=ds, task=task, a=e, b="chance",
                              auc_a=obs, auc_b=0.5, n_a=w.shape[1], n_b=0, p=p))
