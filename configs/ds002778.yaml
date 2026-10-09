@@ -30,7 +30,7 @@ cv_folds: 5
 cv_seed: 0
 
 # Controls have one session (hc); patients have one off and one on their dopaminergic
-# medication. We use the off session. TODO(Roy): confirm off (or on) for the patients.
+# medication. We use the off session (confirmed with Roy).
 recording: "{pid}/ses-{session}/eeg/{pid}_ses-{session}_task-rest_eeg.bdf"
 sessions: {hc: hc, pd: "off"}  # participant id prefix -> session
 condition: rest  # eyes open or closed is not stated in the dataset

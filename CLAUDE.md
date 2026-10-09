@@ -32,14 +32,14 @@ The repo is public and used by Brainhack beginners: keep it clean, short, and we
   + downstream probe. Variability is measured on the probe, not on embeddings.
 - Probe on ds003478: logistic regression, high vs low BDI, stratified 5-fold CV with a fixed split.
 - Data (first task): ds003478 v1.1.0, run-01 only, 1-minute eyes-open/closed blocks → 2 s windows, participant 544 excluded.
+- ds002778 (Parkinson's): the patients' off-medication session. Confirmed.
 - BDI cutoffs: ≤6 low / ≥17 high (equivalent to the original study's <7 / >16 for integer scores). Confirmed.
 - License MIT.
 
 ## Open items (ask Roy, don't assume)
 - Pretrained checkpoints: first inventory in `docs/pretrained_models.md`; "?" cells and its open decisions remain.
 - Which extra tasks/datasets (candidates in `docs/datasets.md`), and their probes (trial-level, multi-class).
-- ds002778 (Parkinson's): we use the patients' off-medication session; confirm off vs on.
-  Its README asks authors to email the dataset curators before submitting a manuscript.
+- ds002778: its README asks authors to email the dataset curators before submitting a manuscript.
 - Fuzzy PyTorch image name/tag: placeholders marked `TODO(fuzzy-image)` in `environment/` and `slurm/`.
 - Shared data path in Rorqual `/project` space.
 
