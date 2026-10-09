@@ -14,3 +14,13 @@ for ds in AlexMI BNCI2014001 BNCI2014004 BNCI2015001 BNCI2015004 Cho2017 \
     curl -sfL "$URL/EEGNetv4_$ds/model-params.pkl" -o "$dest/model-params.pkl"
     echo "downloaded $dest"
 done
+
+# ShallowFBCSPNet: braindecode tutorial checkpoints (one subject of BNCI2014_001), safetensors.
+for repo in plot_bcic_iv_2a_moabb_trial plot_bcic_iv_2a_moabb_cropped; do
+    dest=data/pretrained/shallow/$repo
+    mkdir -p "$dest"
+    for f in params.safetensors metadata.json; do
+        curl -sfL "https://huggingface.co/braindecode/$repo/resolve/main/$f" -o "$dest/$f"
+    done
+    echo "downloaded $dest"
+done

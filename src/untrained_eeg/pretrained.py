@@ -3,15 +3,21 @@
 EEGNetv4: 12 motor-imagery checkpoints by Pierre Guetschel (MIT), one per MOABB dataset,
 https://huggingface.co/PierreGtch/EEGNetv4. Each was trained on 3 channels (C3, Cz, C4) at
 128 Hz. They have the same architecture as our `EEGNet`, so only the tensor names differ.
+ShallowFBCSPNet: 2 checkpoints from braindecode's tutorials (trialwise and cropped decoding),
+https://huggingface.co/braindecode/plot_bcic_iv_2a_moabb_trial and ..._cropped. Each was
+trained on ONE subject (3) of BNCI2014_001, 4 classes, 22 channels at 250 Hz, with inputs in
+microvolts, band-passed 4-38 Hz and exponential-moving standardized (factor_new=1e-3,
+init_block_size=1000). They are the only public ShallowFBCSPNet weights we found.
+
 Download them with scripts/00_download_pretrained.sh. tests/test_pretrained.py checks that
-our loaded copy gives exactly the same features as braindecode 1.8.1.
+our loaded copies give exactly the same features as braindecode 1.8.1.
 """
 
 from pathlib import Path
 
 import torch
 
-from .models import EEGNet
+from .models import EEGNet, ShallowFBCSPNet
 
 REPO = Path(__file__).resolve().parents[2]
 PRETRAINED_DIR = REPO / "data" / "pretrained"  # data/ is never committed
@@ -48,4 +54,30 @@ def load_eegnetv4(dataset, n_times, weights_dir=PRETRAINED_DIR):
     state = torch.load(path, map_location="cpu", weights_only=True)  # tensors only, no code
     model = EEGNet(len(EEGNETV4_CHANNELS), n_times)
     model.load_state_dict(eegnetv4_state_dict(state), strict=True)
+    return model.eval()
+
+
+SHALLOW_CHECKPOINTS = ("plot_bcic_iv_2a_moabb_trial", "plot_bcic_iv_2a_moabb_cropped")
+SHALLOW_CHANNELS = ("Fz", "FC3", "FC1", "FCz", "FC2", "FC4", "C5", "C3", "C1", "Cz", "C2", "C4", "C6",
+                    "CP3", "CP1", "CPz", "CP2", "CP4", "P1", "Pz", "P2", "POz")  # BNCI2014_001 order
+SHALLOW_SFREQ = 250
+
+
+def shallow_state_dict(state):
+    """Rename a braindecode ShallowFBCSPNet checkpoint to our names, without the classifier."""
+    return {key.removeprefix("conv_time_spat."): value for key, value in state.items()
+            if not key.startswith("final_layer.")}
+
+
+def load_shallow(checkpoint, n_times, weights_dir=PRETRAINED_DIR):
+    """ShallowFBCSPNet with pretrained weights, in eval mode. Input: (batch, 22, n_times)."""
+    from safetensors.torch import load_file  # tensors only, no code
+
+    if checkpoint not in SHALLOW_CHECKPOINTS:
+        raise ValueError(f"unknown checkpoint {checkpoint!r}, choose from {SHALLOW_CHECKPOINTS}")
+    path = Path(weights_dir) / "shallow" / checkpoint / "params.safetensors"
+    if not path.exists():
+        raise SystemExit(f"{path} not found. Run: bash scripts/00_download_pretrained.sh")
+    model = ShallowFBCSPNet(len(SHALLOW_CHANNELS), n_times)
+    model.load_state_dict(shallow_state_dict(load_file(path)), strict=True)
     return model.eval()

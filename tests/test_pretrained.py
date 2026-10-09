@@ -12,7 +12,8 @@ import torch
 from torch import nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from untrained_eeg.pretrained import EEGNETV4_CHANNELS, EEGNETV4_DATASETS, PRETRAINED_DIR, load_eegnetv4
+from untrained_eeg.pretrained import (EEGNETV4_CHANNELS, EEGNETV4_DATASETS, PRETRAINED_DIR, SHALLOW_CHANNELS,
+                                      SHALLOW_CHECKPOINTS, load_eegnetv4, load_shallow)
 
 braindecode_models = pytest.importorskip("braindecode.models")
 
@@ -42,3 +43,23 @@ def test_same_as_braindecode(dataset):
     x = 10 * torch.randn(8, len(EEGNETV4_CHANNELS), N_TIMES, generator=torch.Generator().manual_seed(0))
     with torch.no_grad():
         assert torch.equal(ours(x), ref(x))  # bit-identical features
+
+
+@pytest.mark.parametrize("checkpoint", SHALLOW_CHECKPOINTS)
+def test_shallow_same_as_braindecode(checkpoint):
+    path = PRETRAINED_DIR / "shallow" / checkpoint / "params.safetensors"
+    if not path.exists():
+        pytest.skip("run scripts/00_download_pretrained.sh first")
+    from safetensors.torch import load_file
+
+    state = load_file(path)
+    n_out = state["final_layer.conv_classifier.weight"].shape[2]  # classifier length in time
+    ref = braindecode_models.ShallowFBCSPNet(n_chans=len(SHALLOW_CHANNELS), n_outputs=4, n_times=1125,
+                                             final_conv_length=n_out)
+    ref.load_state_dict(state, strict=True)
+    ref.final_layer = nn.Identity()
+    ref.eval()
+    ours = load_shallow(checkpoint, 1125)  # 4.5 s at 250 Hz, the tutorials' trial length
+    x = torch.randn(8, len(SHALLOW_CHANNELS), 1125, generator=torch.Generator().manual_seed(0))
+    with torch.no_grad():
+        assert torch.equal(ours(x), ref(x))

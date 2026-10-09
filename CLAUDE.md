@@ -14,13 +14,18 @@ The repo is public and used by Brainhack beginners: keep it clean, short, and we
   The two braindecode models are copied as plain PyTorch in `models.py` (no braindecode/MNE in the
   Fuzzy environment); `tests/test_models.py` checks they stay bit-identical to braindecode 1.8.1.
 - Trained models: all publicly available pretrained checkpoints for scalp EEG (CNNs and foundation
-  models such as LaBraM). We do not train our own models. Pretrained weights must load into
+  models such as LaBraM), including pretrained EEGNet and ShallowFBCSPNet next to their untrained
+  versions. Same frozen features + probe for every model. We do not train our own models.
+  Open weights only (registration-gated ones such as REVE are out); CC BY-NC weights are fine.
+  Pretrained weights must load into
   plain-PyTorch copies in `models.py` (no braindecode in Fuzzy); loaders in `pretrained.py`,
   checked bit-identical to braindecode 1.8.1 by `tests/test_pretrained.py`. Weights go in `data/pretrained/`.
 - Run `tests/test_models.py` and `tests/test_pretrained.py` with `--noconftest` outside the
   container (`tests/conftest.py` is for the EC experiment and needs the Fuzzy container).
 - Open datasets only (no registration-gated data). An evaluation dataset must not be in a
   checkpoint's pretraining data (leakage).
+- Phase 1: single models on every task. Phase 2: ensembles (seeds, checkpoints, models).
+- Fuzzy PyTorch / MCA is paused: variability is seeds, checkpoints and CV splits for now.
 - Same seed ≠ same weights across PyTorch builds (last-bit differences, e.g. torch 2.14 vs Fuzzy 2.2):
   run the seed baseline with the same build as the Fuzzy runs (normal rounding), or reuse saved weights.
 - Untrained and pretrained networks are compared the same way: frozen feature extractor (head removed)

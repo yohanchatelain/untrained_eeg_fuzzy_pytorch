@@ -16,6 +16,7 @@ accept other channel sets through electrode names or positions).
 | Model | Checkpoints | Input | Pretraining data | License |
 |---|---|---|---|---|
 | EEGNetv4 (CNN, supervised) | 12, one per MOABB motor-imagery dataset ([PierreGtch/EEGNetv4](https://huggingface.co/PierreGtch/EEGNetv4)) | 3 (C3, Cz, C4) · 128 Hz · 3 s | One MOABB dataset each: AlexMI, BNCI2014001, BNCI2014004, BNCI2015001, BNCI2015004, Cho2017, Lee2019_MI, Ofner2017, PhysionetMI, Schirrmeister2017, Weibo2014, Zhou2016 | MIT |
+| ShallowFBCSPNet (CNN, supervised) | 2, braindecode tutorials ([trial](https://huggingface.co/braindecode/plot_bcic_iv_2a_moabb_trial), [cropped](https://huggingface.co/braindecode/plot_bcic_iv_2a_moabb_cropped)) | 22 (BCI IV 2a) · 250 Hz · 4.5 s | BNCI2014001, subject 3 only, 4 classes | ? (braindecode docs) |
 | EEGSym (CNN, supervised) | 1 ([eegsym-original-keras-8ch-pytorch](https://huggingface.co/braindecode/eegsym-original-keras-8ch-pytorch)) | 8 · 128 Hz · 3 s | Motor imagery (?) | other (?) |
 | MIRepNet | 1 ([mirepnet-pretrained](https://huggingface.co/braindecode/mirepnet-pretrained)) | 45 · 250 Hz · 4 s | 7 MOABB MI sets: BNCI2014002, PhysionetMI, Dreyer2023, Weibo2014, Zhou2016, Lee2019, Cho2017 ([paper](https://arxiv.org/abs/2507.20254)) | MIT |
 | Signal-JEPA | 2 ([signal-jepa](https://huggingface.co/braindecode/signal-jepa), [without channel embeddings](https://huggingface.co/braindecode/signal-jepa_without-chans)); the Contextual/PostLocal/PreLocal repos are deprecated | up to 62 · 128 Hz | Lee2019 (62 channels) | MIT |
@@ -32,7 +33,7 @@ accept other channel sets through electrode names or positions).
 | NeuroRVQ (EEG) | 1 ([neurorvq-eeg-pretrained](https://huggingface.co/braindecode/neurorvq-eeg-pretrained)) | 19 · 200 Hz · 4 s | ? | CC BY-NC 4.0 |
 | SleepFM | 1 ([SleepFM](https://huggingface.co/braindecode/SleepFM)) | 4 · 128 Hz · 30 s | Polysomnography, ? | CC BY-NC 4.0 |
 | ZUNA | 1 ([ZUNA](https://huggingface.co/braindecode/ZUNA)) | any (positions) · 256 Hz · 5 s | TUH + 208 public sets, mostly OpenNeuro, list not in the paper ([paper](https://arxiv.org/abs/2602.18478)) | Apache-2.0 |
-| REVE | base, large ([brain-bzh/reve-base](https://huggingface.co/brain-bzh/reve-base)) | any (positions) · 200 Hz | 92 sources, 61,415 h: OpenNeuro, MOABB, TUH ([paper](https://arxiv.org/abs/2510.21585), appendix) | Registration required |
+| REVE | base, large ([brain-bzh/reve-base](https://huggingface.co/brain-bzh/reve-base)) | any (positions) · 200 Hz | 92 sources, 61,415 h: OpenNeuro, MOABB, TUH ([paper](https://arxiv.org/abs/2510.21585), appendix) | Registration required: **excluded** (open weights only) |
 | Masking ablations | ~60 MAE/JEPA checkpoints ([PierreGtch](https://huggingface.co/PierreGtch)) | ? | ? | ? |
 
 ## Ported
@@ -40,6 +41,7 @@ accept other channel sets through electrode names or positions).
 | Model | Loader | Test | Notes |
 |---|---|---|---|
 | EEGNetv4 (12) | `load_eegnetv4` in `src/untrained_eeg/pretrained.py`; weights from `scripts/00_download_pretrained.sh` | `tests/test_pretrained.py`: bit-identical features to braindecode 1.8.1 | Feed C3, Cz, C4 (`C3, CZ, C4` in our config) at 128 Hz, in microvolts |
+| ShallowFBCSPNet (2) | `load_shallow` in `src/untrained_eeg/pretrained.py`; same download script (safetensors) | `tests/test_pretrained.py`: bit-identical features to braindecode 1.8.1 | Feed the 22 BCI IV 2a channels at 250 Hz, microvolts, band-pass 4-38 Hz, exponential moving standardization (factor_new=1e-3, init_block_size=1000) |
 
 Input scale of EEGNetv4: the cards do not say. The first batch-norm's running variance gives
 the input SD seen in training: 3–35 for 10 checkpoints (microvolts, like our cache), but ~340
@@ -54,6 +56,7 @@ pretraining list, "?" = list not checked or not published.
 | Model | ds003478 (EC/EO, BDI) | ds004504 (AD/FTD) | ds002778 (PD) | LEMON (age) | BNCI2014001 (MI) | Sleep-EDF |
 |---|---|---|---|---|---|---|
 | EEGNetv4 | ok | ok | ok | ok | **leak** for the BNCI2014001 checkpoint: use the other 11 | ok |
+| ShallowFBCSPNet | ok | ok | ok | ok | **leak**: both checkpoints | ok |
 | MIRepNet | ok | ok | ok | ok | ok (it is MIRepNet's downstream set) | ok |
 | Signal-JEPA | ok | ok | ok | ok | ok | ok |
 | EEGPT | ok | ok | ok | ok | ok (downstream set) | ok (downstream set) |
@@ -72,12 +75,12 @@ pretraining list, "?" = list not checked or not published.
 - **Other signals:** EMG, ECG and PPG models on the same Hugging Face page.
 - **No public weights:** architectures listed on braindecode without a `-pretrained` repository.
 
-## Open decisions (ask Roy)
+## Decisions (Roy, 2026-10-09)
 
-- REVE weights need registration: does "open only" apply to model weights too?
-- CC BY-NC checkpoints (NeuroRVQ, SleepFM): fine for a research paper?
-- ZUNA and REVE pretrain on large parts of OpenNeuro: keep them only for tasks we can prove
-  are outside their corpus.
+- Open weights only: REVE (registration required) is excluded.
+- CC BY-NC checkpoints (NeuroRVQ, SleepFM) are fine.
+- ZUNA pretrains on large parts of OpenNeuro: keep it only for tasks we can prove are
+  outside its corpus.
 
 ## Related work
 
