@@ -43,7 +43,7 @@ from untrained_eeg.tasks import probe, task_data, task_labels, task_names
 UNTRAINED = ["cnn1d", "shallow", "eegnet", "eegnet_3ch", "shallow_bcic2a", "scattering"]
 PRETRAINED = ["eegnetv4", "shallow_pretrained"]
 POOLS = {**{e: [e] for e in UNTRAINED + PRETRAINED},  # pool name: extractors in it
-         "untrained_60ch_mix": ["cnn1d", "shallow", "eegnet"],  # different architectures
+         "untrained_mix": ["cnn1d", "shallow", "eegnet"],  # different architectures, all channels
          "pretrained_mix": PRETRAINED}
 
 
