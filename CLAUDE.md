@@ -3,23 +3,33 @@
 Context for AI assistants (and humans) working in this repo.
 
 ## Project
-Brainhack Montreal Fall 2026, prototype, aiming at a short paper. Question: how
-much do untrained (random-weight) CNNs vary on EEG? (1) across seeds,
-(2) numerically, via Fuzzy PyTorch / MCA; then compare. Lead: Roy Seo (@royjoysoy).
+Brainhack Montreal Fall 2026, prototype, aiming at a short paper. Question: how do
+untrained (random-weight) CNNs compare with trained (pretrained) models on EEG, across
+several tasks on open datasets? Variability (across seeds, and numerical via Fuzzy PyTorch / MCA)
+is part of the comparison. Lead: Roy Seo (@royjoysoy).
 The repo is public and used by Brainhack beginners: keep it clean, short, and well commented.
 
 ## Design decisions (settled)
-- Models: small custom 1D CNN, ShallowFBCSPNet, EEGNet. Random weights, eval mode, never trained.
+- Untrained models: small custom 1D CNN, ShallowFBCSPNet, EEGNet. Random weights, eval mode, never trained.
   The two braindecode models are copied as plain PyTorch in `models.py` (no braindecode/MNE in the
   Fuzzy environment); `tests/test_models.py` checks they stay bit-identical to braindecode 1.8.1.
+- Trained models: all publicly available pretrained checkpoints for scalp EEG (CNNs and foundation
+  models such as LaBraM). We do not train our own models. Pretrained weights must load into
+  plain-PyTorch copies in `models.py` (no braindecode in Fuzzy).
+- Open datasets only (no registration-gated data). An evaluation dataset must not be in a
+  checkpoint's pretraining data (leakage).
 - Same seed ≠ same weights across PyTorch builds (last-bit differences, e.g. torch 2.14 vs Fuzzy 2.2):
   run the seed baseline with the same build as the Fuzzy runs (normal rounding), or reuse saved weights.
-- Variability is measured on a downstream probe: logistic regression, high vs low BDI, stratified 5-fold CV with a fixed split. Not on embeddings.
-- Data: ds003478 v1.1.0, run-01 only, 1-minute eyes-open/closed blocks → 2 s windows, participant 544 excluded.
+- Untrained and pretrained networks are compared the same way: frozen feature extractor (head removed)
+  + downstream probe. Variability is measured on the probe, not on embeddings.
+- Probe on ds003478: logistic regression, high vs low BDI, stratified 5-fold CV with a fixed split.
+- Data (first task): ds003478 v1.1.0, run-01 only, 1-minute eyes-open/closed blocks → 2 s windows, participant 544 excluded.
 - BDI cutoffs: ≤6 low / ≥17 high (equivalent to the original study's <7 / >16 for integer scores). Confirmed.
 - License MIT.
 
 ## Open items (ask Roy, don't assume)
+- Pretrained checkpoints: first inventory in `docs/pretrained_models.md`; "?" cells and its open decisions remain.
+- Which extra tasks/datasets (candidates in `docs/datasets.md`), and their probes (trial-level, multi-class).
 - Fuzzy PyTorch image name/tag: placeholders marked `TODO(fuzzy-image)` in `environment/` and `slurm/`.
 - Shared data path in Rorqual `/project` space.
 
