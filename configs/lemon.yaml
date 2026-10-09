@@ -1,0 +1,19 @@
+# MPI-LEMON (Leipzig Mind-Brain-Body): resting EEG, eyes closed and eyes open, young
+# (20-35) and old (59-77) adults. Task 6: young vs old. https://fcon_1000.projects.nitrc.org/indi/retro/MPI_LEMON.html
+# We use the authors' preprocessed recordings (EEG_Preprocessed: 1-45 Hz, 250 Hz, ICA
+# cleaned, split into EC and EO; 11.9 GB). The raw ones are 68 GB and need the block
+# markers; every model here gets the same input, so the comparison within LEMON is fair.
+
+# Leave as null to use data/raw/lemon in the repo, downloaded automatically the first time.
+# To use an existing copy, set data_dir or the variable below (wins if both are set).
+data_dir: null
+data_env: UNTRAINED_EEG_LEMON
+openneuro:  # not OpenNeuro: the public S3 bucket of the INDI project
+  id: lemon
+  bucket: "https://s3.amazonaws.com/fcp-indi"
+  prefix: data/Projects/INDI/MPI-LEMON
+  include: ["EEG_MPILMBB_LEMON/EEG_Preprocessed_BIDS_ID/EEG_Preprocessed/*",
+            "Behavioural_Data_MPILMBB_LEMON/META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv"]
+
+cache_dir: data/cache/lemon
+results_dir: results

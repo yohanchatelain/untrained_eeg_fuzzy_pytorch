@@ -62,8 +62,15 @@ def _data_dir(cfg):
     if not done.exists():
         from .download import download_openneuro
 
-        print(f"downloading {src['id']} from OpenNeuro into {path}")
-        download_openneuro(src["id"], path, src["include"], src["version"])
+        print(f"downloading {src['id']} into {path}")
+        if "urls" in src:  # plain files on a web server (BNCI)
+            from .download import download_urls
+
+            download_urls(src["urls"], path)
+        elif "bucket" in src:  # another public S3 bucket (MPI-LEMON, PhysioNet's mirror)
+            download_openneuro(src["prefix"], path, src["include"], bucket=src["bucket"])
+        else:
+            download_openneuro(src["id"], path, src["include"], src["version"])
         done.touch()
     return path
 

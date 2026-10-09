@@ -1,0 +1,16 @@
+# Sleep-EDF Expanded, sleep cassette study (PhysioNet): 153 nights of 78 healthy adults,
+# 2 EEG channels (Fpz-Cz, Pz-Oz) at 100 Hz, hypnograms in 30 s epochs. Task 8: sleep
+# staging, 5 classes (W, N1, N2, N3 = stages 3 and 4, REM). https://physionet.org/content/sleep-edfx/1.0.0/
+# Downloaded from PhysioNet's open-data mirror on AWS (8x faster here than physionet.org).
+
+# Leave as null to use data/raw/sleep_edf in the repo, downloaded automatically the first time.
+data_dir: null
+data_env: UNTRAINED_EEG_SLEEP_EDF
+openneuro:  # not OpenNeuro: PhysioNet's public S3 bucket
+  id: sleep_edf
+  bucket: "https://physionet-open.s3.amazonaws.com"
+  prefix: sleep-edfx/1.0.0
+  include: ["sleep-cassette/*-PSG.edf", "sleep-cassette/*-Hypnogram.edf", "SC-subjects.xls"]
+
+cache_dir: data/cache/sleep_edf
+results_dir: results
