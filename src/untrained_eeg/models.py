@@ -128,6 +128,26 @@ class EEGNet(nn.Module):
         return self.features(x.unsqueeze(1))  # (batch, 1, n_chans, n_times)
 
 
+class WaveletScattering(nn.Module):
+    """Mallat's wavelet scattering transform (Kymatio), per channel. Fixed filters: no weights.
+
+    Wavelet convolutions, modulus and averaging, cascaded twice (orders 0, 1 and 2), with
+    Morlet wavelets up to scale 2**J samples and Q = (8, 1) wavelets per octave. Features:
+    log(1 + coefficients), averaged over time: (batch, n_chans, n_paths).
+    """
+
+    def __init__(self, n_times, J, Q=(8, 1)):
+        super().__init__()
+        # Imported from the 1-D module directly: `kymatio.torch` also loads the 3-D
+        # transform, which needs a SciPy function (sph_harm) recent SciPy removed.
+        from kymatio.scattering1d.frontend.torch_frontend import ScatteringTorch1D
+
+        self.scattering = ScatteringTorch1D(J=J, shape=n_times, Q=Q)
+
+    def forward(self, x):  # x: (batch, n_chans, n_times)
+        return torch.log1p(self.scattering(x)).mean(dim=-1)
+
+
 def build_model(name, n_chans, n_times, seed):
     """Create a model with random weights drawn from `seed`, in eval mode."""
     torch.manual_seed(seed)

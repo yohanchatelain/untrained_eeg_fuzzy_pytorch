@@ -11,6 +11,8 @@ Extractors (each with the input its weights expect):
   shallow_bcic2a           untrained ShallowFBCSPNet on the same input as shallow_pretrained
   shallow_pretrained       pretrained ShallowFBCSPNet, 2 checkpoints (22 channels, 250 Hz,
                            4-38 Hz, exponential moving standardization: "bcic2a" input)
+  scattering               Mallat's wavelet scattering (fixed wavelets, no weights), one
+                           instance per largest scale J = 3..8 ("standard" input)
 
 Extractors whose input the dataset lacks (channels, or a preprocessing variant) are skipped.
 Writes results/phase1/<dataset>/features/<extractor>/<instance>.npz; existing files are
@@ -32,7 +34,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config, load_dataset, variant_config
-from untrained_eeg.models import build_model, embed
+from untrained_eeg.models import WaveletScattering, build_model, embed
 from untrained_eeg.pretrained import EEGNETV4_CHANNELS, EEGNETV4_DATASETS, SHALLOW_CHECKPOINTS, load_eegnetv4, load_shallow
 
 # Cho2017 and Ofner2017 were trained on another input scale (docs/pretrained_models.md).
@@ -46,7 +48,9 @@ EXTRACTORS = {  # name: (group, preprocessing variant, channel subset or None)
     "eegnetv4": ("pretrained", "standard", EEGNETV4_CHANNELS),
     "shallow_bcic2a": ("untrained", "bcic2a", None),
     "shallow_pretrained": ("pretrained", "bcic2a", None),
+    "scattering": ("wavelet", "standard", None),
 }
+SCATTERING_J = range(3, 9)  # largest wavelet scale 2**J samples: 62 ms to 2 s at 128 Hz
 
 
 def instances(name, seeds):
@@ -55,6 +59,8 @@ def instances(name, seeds):
         return [(d, lambda c, t, d=d: load_eegnetv4(d, t)) for d in EEGNETV4_USED]
     if name == "shallow_pretrained":
         return [(k, lambda c, t, k=k: load_shallow(k, t)) for k in SHALLOW_CHECKPOINTS]
+    if name == "scattering":
+        return [(f"J{j}", lambda c, t, j=j: WaveletScattering(t, j)) for j in SCATTERING_J]
     arch = {"eegnet_3ch": "eegnet", "shallow_bcic2a": "shallow"}.get(name, name)
     return [(f"seed{s:03d}", lambda c, t, s=s: build_model(arch, c, t, s)) for s in seeds]
 

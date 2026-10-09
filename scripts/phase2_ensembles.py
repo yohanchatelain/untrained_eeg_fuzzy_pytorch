@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config
 from untrained_eeg.tasks import probe, task_data, task_labels, task_names
 
-UNTRAINED = ["cnn1d", "shallow", "eegnet", "eegnet_3ch", "shallow_bcic2a"]
+UNTRAINED = ["cnn1d", "shallow", "eegnet", "eegnet_3ch", "shallow_bcic2a", "scattering"]
 PRETRAINED = ["eegnetv4", "shallow_pretrained"]
 POOLS = {**{e: [e] for e in UNTRAINED + PRETRAINED},  # pool name: extractors in it
          "untrained_60ch_mix": ["cnn1d", "shallow", "eegnet"],  # different architectures
@@ -99,11 +99,14 @@ for pool, extractors in POOLS.items():
         wide = t.pivot_table(index="sample", columns=["extractor", "instance"], values="prob")[insts]
         y = t.drop_duplicates("sample").set_index("sample").label.loc[wide.index].to_numpy()
         P = wide.to_numpy().T  # instances x samples
-        methods = ["average", "vote"] + (["features"] if len(extractors) == 1 else [])
-        if len(extractors) == 1:
+        feats = None
+        if len(extractors) == 1:  # features can be averaged only within one extractor
             files = [src / "features" / e / f"{i}.npz" for e, i in insts]
             f0 = {k: np.load(files[0])[k] for k in ("cond", "participant_id")}  # arrays: workers get copies
             feats = [np.load(f)["feats"] for f in files]
+            if len({x.shape for x in feats}) > 1:  # e.g. scattering: feature count depends on J
+                feats = None
+        methods = ["average", "vote"] + (["features"] if feats is not None else [])
         for k in range(1, min(len(insts), args.max_k) + 1):
             for method in methods:
                 draws = draws_of(len(insts), k, args.feature_draws if method == "features" else args.draws, rng)
