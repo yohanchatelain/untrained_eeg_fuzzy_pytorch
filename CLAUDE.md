@@ -52,7 +52,8 @@ The repo is public and used by Brainhack beginners: keep it clean, short, and we
 
 ## Conventions
 - No data in the repo. Each dataset is downloaded into `data/raw/<dataset>` the first time it is
-  needed (`download.py`, resumable); `UNTRAINED_EEG_DATA` or `data_dir` point to an existing copy
+  needed (`download.py`, resumable); `data_dir` or the dataset's variable (`data_env` in its config:
+  `UNTRAINED_EEG_DATA` for ds003478, `UNTRAINED_EEG_DS004504`, ...) point to an existing copy
   instead, which is never written to. Never hardcode a data path.
 - Never commit `data/` or `results/`.
 - Preprocessing runs outside the Fuzzy container; scripts 02–04 read only the cache (`build=False`).

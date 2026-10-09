@@ -1,10 +1,6 @@
 """Phase 1, step 2: probe every instance's features on the ds003478 tasks.
 
-Tasks (same probe everywhere: standardize + logistic regression, stratified 5-fold CV):
-  ec_eo        eyes closed vs open, one sample per 1-minute block; folds grouped by
-               participant, so no participant is in both training and test
-  bdi_closed   high vs low BDI, one sample per participant (mean of its eyes-closed blocks)
-  bdi_open     the same with eyes-open blocks
+Tasks and probe: src/untrained_eeg/tasks.py (eyes closed vs open, BDI per condition).
 
 Every instance (seed or checkpoint) is probed with the config's CV split. The first
 instance of each extractor is also probed with --cv-seeds, the CV-split variability.
@@ -22,41 +18,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import balanced_accuracy_score, roc_auc_score
-from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, cross_val_predict
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config, load_participants
-
-TASKS = ("ec_eo", "bdi_closed", "bdi_open")
-
-
-def task_data(f, task, labels):
-    """(X, y, groups, sample ids) for one task from an instance's block features."""
-    feats, cond, pid = f["feats"], f["cond"], f["participant_id"]
-    if task == "ec_eo":
-        keep = np.isin(pid, labels.index)  # the same 113 participants as the BDI tasks
-        block = pd.Series(pid[keep]).groupby(pid[keep]).cumcount().to_numpy()
-        ids = [f"{p}/block{b}" for p, b in zip(pid[keep], block)]
-        return feats[keep], (cond[keep] == "closed").astype(int), pid[keep], ids
-    condition = task.removeprefix("bdi_")
-    people = [p for p in labels.index if ((pid == p) & (cond == condition)).any()]
-    X = np.stack([feats[(pid == p) & (cond == condition)].mean(axis=0) for p in people])
-    return X, labels[people].to_numpy(), np.array(people), people
-
-
-def probe(X, y, groups, task, cv_seed, folds):
-    """Out-of-fold P(class 1), AUC and balanced accuracy."""
-    clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=5000))
-    if task == "ec_eo":
-        cv = StratifiedGroupKFold(folds, shuffle=True, random_state=cv_seed)
-    else:
-        cv = StratifiedKFold(folds, shuffle=True, random_state=cv_seed)
-    prob = cross_val_predict(clf, X, y, groups=groups, cv=cv, method="predict_proba")[:, 1]
-    return prob, roc_auc_score(y, prob), balanced_accuracy_score(y, prob > 0.5)
+from untrained_eeg.tasks import TASKS, probe, task_data
 
 
 def seed_range(text):
@@ -79,7 +44,7 @@ for ext_dir in sorted(p for p in (root / "features").iterdir() if p.is_dir()):
         f = np.load(path)
         cv_seeds = args.cv_seeds if i == 0 else [cfg["cv_seed"]]
         for task in TASKS:
-            X, y, groups, ids = task_data(f, task, labels)
+            X, y, groups, ids = task_data(f["feats"], f["cond"], f["participant_id"], task, labels)
             for cv_seed in cv_seeds:
                 prob, auc, bacc = probe(X, y, groups, task, cv_seed, cfg["cv_folds"])
                 metrics.append(dict(extractor=ext_dir.name, group=str(f["group"]), instance=path.stem,

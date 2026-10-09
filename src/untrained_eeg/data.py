@@ -28,7 +28,8 @@ def load_config(path=REPO / "configs" / "ds003478.yaml"):
     """Read the YAML config and resolve paths."""
     with open(path) as f:
         cfg = yaml.safe_load(f)
-    cfg["data_dir"] = os.environ.get("UNTRAINED_EEG_DATA") or cfg.get("data_dir")
+    # each dataset has its own variable (UNTRAINED_EEG_DATA for ds003478, the first one)
+    cfg["data_dir"] = os.environ.get(cfg.get("data_env", "UNTRAINED_EEG_DATA")) or cfg.get("data_dir")
     for key in ("cache_dir", "results_dir"):
         cfg[key] = REPO / cfg[key]  # relative to the repo root (absolute paths stay as-is)
     return cfg
