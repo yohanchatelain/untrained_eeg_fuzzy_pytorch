@@ -132,8 +132,10 @@ class WaveletScattering(nn.Module):
     """Mallat's wavelet scattering transform (Kymatio), per channel. Fixed filters: no weights.
 
     Wavelet convolutions, modulus and averaging, cascaded twice (orders 0, 1 and 2), with
-    Morlet wavelets up to scale 2**J samples and Q = (8, 1) wavelets per octave. Features:
-    log(1 + coefficients), averaged over time: (batch, n_chans, n_paths).
+    Morlet wavelets up to scale 2**J samples and Q = (8, 1) wavelets per octave. Features,
+    averaged over time: (batch, n_chans, n_paths), the order-0 coefficient as it is (a
+    low-pass average of the signal, which can be negative) and log(1 + coefficient) for
+    orders 1 and 2 (moduli, never negative).
     """
 
     def __init__(self, n_times, J, Q=(8, 1)):
@@ -145,7 +147,8 @@ class WaveletScattering(nn.Module):
         self.scattering = ScatteringTorch1D(J=J, shape=n_times, Q=Q)
 
     def forward(self, x):  # x: (batch, n_chans, n_times)
-        return torch.log1p(self.scattering(x)).mean(dim=-1)
+        s = self.scattering(x)  # (batch, n_chans, n_paths, n_steps); path 0 is order 0
+        return torch.cat([s[:, :, :1], torch.log1p(s[:, :, 1:])], dim=2).mean(dim=-1)
 
 
 def build_model(name, n_chans, n_times, seed):
