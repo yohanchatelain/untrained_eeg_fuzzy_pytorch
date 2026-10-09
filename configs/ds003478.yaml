@@ -1,11 +1,16 @@
 # Settings for OpenNeuro ds003478 v1.1.0 (resting EEG, depression).
 # Every script reads this file. Override it with --config path/to/other.yaml.
 
-# Where the BIDS dataset lives. Leave as null and set the environment variable
-# UNTRAINED_EEG_DATA instead, e.g.
+# Where the BIDS dataset lives. Leave as null to use data/raw/ds003478 in the repo,
+# downloaded automatically the first time (run-01 files only, 8.2 GB). To use an existing
+# copy (e.g. a shared /project folder), set data_dir or the environment variable
 #   export UNTRAINED_EEG_DATA=/path/to/ds003478
 # The environment variable wins if both are set.
 data_dir: null
+openneuro:
+  id: ds003478
+  version: "1.1.0"
+  include: [participants.tsv, participants.json, dataset_description.json, CHANGES, "*_run-01_*"]
 
 # Where preprocessed windows and results are written (both git-ignored).
 cache_dir: data/cache

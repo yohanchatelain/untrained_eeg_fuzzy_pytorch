@@ -35,12 +35,23 @@ def load_config(path=REPO / "configs" / "ds003478.yaml"):
 
 
 def _data_dir(cfg):
-    if not cfg["data_dir"]:
-        raise SystemExit(
-            "No data path. Run: export UNTRAINED_EEG_DATA=/path/to/ds003478\n"
-            "(or set data_dir in the config). To download: scripts/00_download_data.sh"
-        )
-    return Path(cfg["data_dir"])
+    """The BIDS dataset folder, downloaded first if it is not there yet.
+
+    Default location: data/raw/<dataset> in the repo (git-ignored). UNTRAINED_EEG_DATA or
+    data_dir in the config point to an existing copy instead (e.g. a shared /project folder).
+    """
+    if cfg["data_dir"]:
+        return Path(cfg["data_dir"])  # an existing copy: never written to
+    src = cfg["openneuro"]
+    path = REPO / "data" / "raw" / src["id"]
+    done = path / ".download_complete"  # written last, so an interrupted download resumes
+    if not done.exists():
+        from .download import download_openneuro
+
+        print(f"downloading {src['id']} from OpenNeuro into {path}")
+        download_openneuro(src["id"], path, src["include"], src["version"])
+        done.touch()
+    return path
 
 
 def load_participants(cfg):

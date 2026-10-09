@@ -51,7 +51,9 @@ The repo is public and used by Brainhack beginners: keep it clean, short, and we
 - After exclusions and cutoffs: 113 participants, 74 low, 39 high.
 
 ## Conventions
-- Data path from `UNTRAINED_EEG_DATA` env var (or `data_dir` in config). Never hardcode it.
+- No data in the repo. Each dataset is downloaded into `data/raw/<dataset>` the first time it is
+  needed (`download.py`, resumable); `UNTRAINED_EEG_DATA` or `data_dir` point to an existing copy
+  instead, which is never written to. Never hardcode a data path.
 - Never commit `data/` or `results/`.
 - Preprocessing runs outside the Fuzzy container; scripts 02–04 read only the cache (`build=False`).
 - One process = one MCA sample (`03_mca_variability.py --sample i`).
