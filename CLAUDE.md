@@ -38,6 +38,8 @@ The repo is public and used by Brainhack beginners: keep it clean, short, and we
 ## Open items (ask Roy, don't assume)
 - Pretrained checkpoints: first inventory in `docs/pretrained_models.md`; "?" cells and its open decisions remain.
 - Which extra tasks/datasets (candidates in `docs/datasets.md`), and their probes (trial-level, multi-class).
+- ds002778 (Parkinson's): we use the patients' off-medication session; confirm off vs on.
+  Its README asks authors to email the dataset curators before submitting a manuscript.
 - Fuzzy PyTorch image name/tag: placeholders marked `TODO(fuzzy-image)` in `environment/` and `slurm/`.
 - Shared data path in Rorqual `/project` space.
 
