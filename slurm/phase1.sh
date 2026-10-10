@@ -15,5 +15,6 @@ set -euo pipefail
 
 module load python/3.11
 source "${VENV:-$HOME/venv/untrained_eeg}/bin/activate"
+export HF_HOME="$PWD/data/pretrained/hf" HF_HUB_OFFLINE=1  # foundation-model weights, no internet here
 python scripts/phase1_features.py --config "${CONFIG:-configs/ds003478.yaml}"
 python scripts/phase1_probe.py --config "${CONFIG:-configs/ds003478.yaml}"

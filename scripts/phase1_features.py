@@ -13,6 +13,9 @@ Extractors (each with the input its weights expect):
                            4-38 Hz, exponential moving standardization: "bcic2a" input)
   scattering               Mallat's wavelet scattering (fixed wavelets, no weights), one
                            instance per largest scale J = 3..8 ("standard" input)
+  eegpt, labram, bendr, cbramod, codebrain, eegdino_small, eegdino_medium, signal_jepa
+                           pretrained foundation models (src/untrained_eeg/foundation.py), one
+                           instance each, each with its own sampling rate, channels and window
 
 Extractors whose input the dataset lacks (channels, or a preprocessing variant) are skipped.
 Writes results/phase1/<dataset>/features/<extractor>/<instance>.npz; existing files are
@@ -33,7 +36,8 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from untrained_eeg.data import load_config, load_dataset, variant_config
+from untrained_eeg.data import COMMON_VARIANTS, load_config, load_dataset, variant_config
+from untrained_eeg.foundation import FOUNDATION, HF_HOME, Foundation, variant_of
 from untrained_eeg.models import WaveletScattering, build_model, embed
 from untrained_eeg.pretrained import EEGNETV4_CHANNELS, EEGNETV4_DATASETS, SHALLOW_CHECKPOINTS, load_eegnetv4, load_shallow
 
@@ -49,6 +53,7 @@ EXTRACTORS = {  # name: (group, preprocessing variant, channel subset or None)
     "shallow_bcic2a": ("untrained", "bcic2a", None),
     "shallow_pretrained": ("pretrained", "bcic2a", None),
     "scattering": ("wavelet", "standard", None),
+    **{key: ("foundation", variant_of(key), None) for key in FOUNDATION},
 }
 SCATTERING_J = range(3, 9)  # largest wavelet scale 2**J samples: 62 ms to 2 s at 128 Hz
 
@@ -62,6 +67,8 @@ def instances(name, seeds, cfg):
         return [(k, lambda c, t, k=k: load_shallow(k, t)) for k in SHALLOW_CHECKPOINTS]
     if name == "scattering":
         return [(f"J{j}", lambda c, t, j=j: WaveletScattering(t, j)) for j in SCATTERING_J]
+    if name in FOUNDATION:  # one pretrained model; it picks its own channels by name
+        return [("pretrained", lambda c, t: Foundation(name, cfg["channels"], t))]
     arch = {"eegnet_3ch": "eegnet", "shallow_bcic2a": "shallow"}.get(name, name)
     return [(f"seed{s:03d}", lambda c, t, s=s: build_model(arch, c, t, s)) for s in seeds]
 
@@ -86,23 +93,26 @@ parser.add_argument("--seeds", type=seed_range, default=list(range(30)), help="u
 args = parser.parse_args()
 
 torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", 1)))
+os.environ.setdefault("HF_HOME", str(HF_HOME))  # foundation-model weights, read offline
 cfg = load_config(args.config) if args.config else load_config()
 out_root = Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"] / "features"
-per_block = int(cfg["segment_s"] / cfg["window_s"])  # 30 windows of 2 s per 1-minute block
-data = {}  # preprocessing variant -> (participants, {participant_id: (X, cond)})
+data = {}  # the current preprocessing variant -> (participants, {participant_id: (X, cond)})
 
-for name in args.extractors:
+for name in sorted(args.extractors, key=lambda n: EXTRACTORS[n][1]):  # one variant at a time
     group, variant, subset = EXTRACTORS[name]
     if name in cfg.get("exclude", {}).get("extractors", []):
         print(f"{name}: skipped, trained on this dataset (leakage)", flush=True)
         continue
     have = {c.upper() for c in cfg["channels"]}
-    if (variant != "standard" and variant not in cfg.get("preprocessing", {})) or \
-            (subset and not {c.upper() for c in subset} <= have):
+    known = variant == "standard" or variant in cfg.get("preprocessing", {}) or variant in COMMON_VARIANTS
+    vcfg = variant_config(cfg, variant) if known else None
+    if not known or (subset and not {c.upper() for c in subset} <= have) or vcfg["window_s"] > vcfg["segment_s"]:
         print(f"{name}: skipped, this dataset lacks its input", flush=True)
         continue
+    per_block = int(vcfg["segment_s"] / vcfg["window_s"])  # windows per block (e.g. 30 of 2 s)
     if variant not in data:
-        data[variant] = load_dataset(variant_config(cfg, variant))
+        data.clear()  # keep one variant in memory (LEMON at 250 Hz is about 10 GB)
+        data[variant] = load_dataset(vcfg)
     participants, windows = data[variant]
     if subset:  # channel indices in the cached order (config names are upper case)
         names = [c.upper() for c in cfg["channels"]]
@@ -114,7 +124,11 @@ for name in args.extractors:
         out = out_root / name / f"{inst}.npz"
         if out.exists():
             continue
-        model = make(n_chans, n_times)
+        try:
+            model = make(n_chans, n_times)
+        except ValueError as e:  # e.g. a foundation model's channels missing from the dataset
+            print(f"{name}: skipped, {e}", flush=True)
+            continue
         rows = [block_features(model, windows[p], per_block) for p in pids]
         out.parent.mkdir(parents=True, exist_ok=True)
         np.savez(out, feats=np.concatenate([f for f, _ in rows]).astype(np.float32),

@@ -35,15 +35,20 @@ def load_config(path=REPO / "configs" / "ds003478.yaml"):
     return cfg
 
 
+# Variants every dataset has: the sampling rates (and window) foundation models expect.
+COMMON_VARIANTS = {"fm200": {"sfreq": 200}, "fm250": {"sfreq": 250},
+                   "fm200_30s": {"sfreq": 200, "window_s": 30}}
+
+
 def variant_config(cfg, name):
-    """The config for one preprocessing variant (see `preprocessing` in the config).
+    """The config for one preprocessing variant (`preprocessing` in the config, or COMMON_VARIANTS).
 
     "standard" is the top-level settings. Other variants override some of them (e.g. the
     input a pretrained model was trained on) and get their own cache folder.
     """
     if name == "standard":
         return cfg
-    out = {**cfg, **cfg["preprocessing"][name]}
+    out = {**cfg, **{**COMMON_VARIANTS, **cfg.get("preprocessing", {})}[name]}
     out["cache_dir"] = Path(cfg["cache_dir"]) / name
     return out
 

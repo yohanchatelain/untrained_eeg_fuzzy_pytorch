@@ -38,13 +38,16 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config
+from untrained_eeg.foundation import FOUNDATION
 from untrained_eeg.tasks import probe, task_data, task_labels, task_names
 
 UNTRAINED = ["cnn1d", "shallow", "eegnet", "eegnet_3ch", "shallow_bcic2a", "scattering"]
 PRETRAINED = ["eegnetv4", "shallow_pretrained"]
 POOLS = {**{e: [e] for e in UNTRAINED + PRETRAINED},  # pool name: extractors in it
          "untrained_mix": ["cnn1d", "shallow", "eegnet"],  # different architectures, all channels
-         "pretrained_mix": PRETRAINED}
+         "pretrained_mix": PRETRAINED,
+         "foundation_mix": list(FOUNDATION),  # one instance per foundation model
+         "all_pretrained_mix": PRETRAINED + list(FOUNDATION)}
 
 
 def draws_of(n, k, n_draws, rng):
@@ -90,9 +93,10 @@ rng = np.random.default_rng(0)
 rows, summary = [], []
 
 for pool, extractors in POOLS.items():
-    if not set(extractors) <= set(preds.extractor):  # e.g. no BCI IV 2a input on this dataset
-        continue
+    extractors = [e for e in extractors if e in set(preds.extractor)]  # those this dataset has
     p = preds[preds.extractor.isin(extractors)]
+    if p[["extractor", "instance"]].drop_duplicates().shape[0] < 2:  # nothing to combine
+        continue
     insts = sorted(set(zip(p.extractor, p.instance)))  # (extractor, instance) members
     for task in TASKS:
         t = p[p.task == task]
