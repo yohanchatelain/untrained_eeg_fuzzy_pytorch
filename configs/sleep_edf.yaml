@@ -41,6 +41,7 @@ cv_folds: 5
 cv_seed: 0
 cv_split_seeds: 10        # CV-split variability over 10 splits (5-class probes are slow)
 ensemble_features: false  # phase 2: averaged predictions and votes only, no feature averaging
+n_permutations: 200       # permutation test: fewer refits (each 5-class probe takes minutes)
 
 # Bipolar derivations have no electrode positions: no foundation model and no EEGNetv4
 # (C3, Cz, C4) here.
