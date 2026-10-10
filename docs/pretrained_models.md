@@ -44,6 +44,11 @@ accept other channel sets through electrode names or positions).
 | ShallowFBCSPNet (2) | `load_shallow` in `src/untrained_eeg/pretrained.py`; same download script (safetensors) | `tests/test_pretrained.py`: bit-identical features to braindecode 1.8.1 | Feed the 22 BCI IV 2a channels at 250 Hz, microvolts, band-pass 4-38 Hz, exponential moving standardization (factor_new=1e-3, init_block_size=1000) |
 | EEGPT, LaBraM, BENDR (interpolated), CBraMod, CodeBrain, EEG-DINO small and medium, Signal-JEPA | `Foundation` in `src/untrained_eeg/foundation.py`, through braindecode 1.8.1 (not plain PyTorch: Fuzzy is paused); weights from the braindecode Hugging Face page, cached in `data/pretrained/hf` | Every pretrained tensor must load (only EEGPT's channel table, rebuilt for our channels, and the heads are left out) | Each gets its pretraining rate (200, 250 or 128 Hz), channels (all, the 19 of 10-20, or Lee2019's) and scale; CodeBrain needs 30 s windows. EEGPT in millivolts and BENDR min-max scaled are assumptions |
 
+BENDR as a frozen extractor: its features are nearly constant across inputs (median SD across
+blocks 0.0004, against 0.2 to 0.9 for EEGPT and LaBraM), so every task is near chance. The cause
+is probably how braindecode's InterpolatedBENDR returns features or its undocumented input
+scaling (we use per-channel min-max); its results are left out of the conclusions.
+
 Input scale of EEGNetv4: the cards do not say. The first batch-norm's running variance gives
 the input SD seen in training: 3–35 for 10 checkpoints (microvolts, like our cache), but ~340
 for Cho2017 and ~8×10⁶ for Ofner2017 (another unit). Rescale for those two, or leave them out.
