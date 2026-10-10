@@ -124,7 +124,8 @@ def _clean(raw, cfg):
     microvolts, and a variant's exponential moving standardization (`ems`).
     """
     raw.pick(cfg["channels"])
-    raw.set_eeg_reference("average", verbose="error")
+    if cfg.get("reference", "average") == "average":  # "none" for bipolar derivations (sleep)
+        raw.set_eeg_reference("average", verbose="error")
     if cfg.get("pick"):
         raw.pick(cfg["pick"])
     raw.filter(cfg["l_freq"], cfg["h_freq"], verbose="error")
@@ -170,6 +171,50 @@ def preprocess_bnci(cfg, participant_id):
                 X.append(seg.reshape(len(seg), n, win).transpose(1, 0, 2))
                 cond += [name] * n
     return np.concatenate(X).astype(np.float32), np.array(cond), ch_names
+
+
+SLEEP_STAGES = {"Sleep stage W": "W", "Sleep stage 1": "N1", "Sleep stage 2": "N2",
+                "Sleep stage 3": "N3", "Sleep stage 4": "N3", "Sleep stage R": "REM"}  # R&K -> AASM
+
+
+def preprocess_sleep(cfg, participant_id):
+    """Sleep-EDF sleep cassette: 30 s epochs of both nights of one subject, labelled by stage.
+
+    Stages 3 and 4 merge into N3; movement and unscored epochs are dropped. Wake is kept only
+    within `wake_margin_min` of sleep (the long wake periods before and after are trimmed).
+    Then at most `max_per_class` epochs per stage and night are drawn (fixed seed), so every
+    night weighs about the same and the cache stays small.
+    """
+    import glob
+
+    import mne
+
+    subject = participant_id.removeprefix("sub-")
+    folder = _data_dir(cfg) / "sleep-cassette"
+    X, cond = [], []
+    for night in "12":
+        psg = sorted(glob.glob(str(folder / f"SC4{subject}{night}E?-PSG.edf")))
+        hyp = sorted(glob.glob(str(folder / f"SC4{subject}{night}E?-Hypnogram.edf")))
+        if not psg or not hyp:
+            continue  # a few subjects have one night only
+        raw = mne.io.read_raw_edf(psg[0], include=cfg["channels"], preload=True, verbose="error")
+        data, ch_names = _clean(raw, cfg)
+        sf, win = cfg["sfreq"], int(cfg["window_s"] * cfg["sfreq"])
+        ann = mne.read_annotations(hyp[0])
+        epochs = [(o + 30 * k, SLEEP_STAGES[d]) for o, dur, d in zip(ann.onset, ann.duration, ann.description)
+                  if d in SLEEP_STAGES for k in range(int(dur // 30))]
+        sleep = [o for o, s in epochs if s != "W"]
+        lo, hi = min(sleep) - 60 * cfg["wake_margin_min"], max(sleep) + 60 * cfg["wake_margin_min"]
+        epochs = [(o, s) for o, s in epochs if lo <= o <= hi and int(o * sf) + win <= data.shape[1]]
+        rng = np.random.default_rng(int(subject) * 10 + int(night))
+        for stage in ("W", "N1", "N2", "N3", "REM"):
+            onsets = [o for o, s in epochs if s == stage]
+            take = rng.permutation(len(onsets))[: cfg["max_per_class"]]
+            for i in sorted(take):
+                start = int(onsets[i] * sf)
+                X.append(data[:, start : start + win])
+                cond.append(stage)
+    return np.stack(X).astype(np.float32), np.array(cond), ch_names
 
 
 def recording_path(cfg, participant_id):
@@ -295,7 +340,7 @@ def load_windows(cfg, participant_id, build=True):
         if not build:
             raise SystemExit(f"Missing cache {path}. Run scripts/01_run_untrained.py first.")
         prep = {"resting": preprocess_resting, "bnci": preprocess_bnci,
-                "lemon": preprocess_lemon}.get(cfg.get("loader"), preprocess_subject)
+                "lemon": preprocess_lemon, "sleep": preprocess_sleep}.get(cfg.get("loader"), preprocess_subject)
         X, cond, ch_names = prep(cfg, participant_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez(path, X=X, cond=cond, ch_names=ch_names)

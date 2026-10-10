@@ -11,9 +11,9 @@ segments, or of one condition's for a task named <name>_closed / <name>_open), l
 patient (or older) group, 0 = control (or younger).
 mi_left_right  BNCI 2014-001 left vs right hand imagery, one sample per trial; each subject
                gets its own stratified 5-fold CV (within subject), AUC over all trials
+sleep_stage    Sleep-EDF, 5 stages, one sample per 30 s epoch, folds grouped by subject;
+               macro one-vs-rest AUC
 """
-
-WITHIN_SUBJECT = {"mi_left_right"}  # trial-level tasks probed separately in each subject
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,22 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .data import load_participants
+
+WITHIN_SUBJECT = {"mi_left_right"}  # trial-level tasks probed separately in each subject
+MULTICLASS = {"sleep_stage": ["W", "N1", "N2", "N3", "REM"]}  # task: classes, in label order
+
+
+def auc_score(y, prob):
+    """AUC; macro one-vs-rest when prob has one column per class."""
+    if prob.ndim == 2:
+        return roc_auc_score(y, prob, multi_class="ovr", average="macro", labels=range(prob.shape[1]))
+    return roc_auc_score(y, prob)
+
+
+def predicted(prob):
+    """Predicted classes: the most probable one, or P > 0.5 for two classes."""
+    return prob.argmax(axis=1) if prob.ndim == 2 else (prob > 0.5).astype(int)
+
 
 TASKS = ("ec_eo", "bdi_closed", "bdi_open")  # ds003478
 
@@ -44,6 +60,13 @@ def task_data(feats, cond, pid, task, labels):
         block = pd.Series(pid[keep]).groupby(pid[keep]).cumcount().to_numpy()
         ids = [f"{p}/block{b}" for p, b in zip(pid[keep], block)]
         return feats[keep], (cond[keep] == "closed").astype(int), pid[keep], ids
+    if task in MULTICLASS:  # one row per epoch, class in cond
+        classes = MULTICLASS[task]
+        keep = np.isin(cond, classes)
+        epoch = pd.Series(pid[keep]).groupby(pid[keep]).cumcount().to_numpy()
+        ids = [f"{p}/epoch{k}" for p, k in zip(pid[keep], epoch)]
+        y = np.array([classes.index(c) for c in cond[keep]])
+        return feats[keep], y, pid[keep], ids
     if task in WITHIN_SUBJECT:  # one row per trial, class in cond
         keep = np.isin(cond, ["left", "right"])
         trial = pd.Series(pid[keep]).groupby(pid[keep]).cumcount().to_numpy()
@@ -72,6 +95,10 @@ def probe(X, y, groups, task, cv_seed, folds):
             cv = StratifiedKFold(folds, shuffle=True, random_state=cv_seed)
             prob[i] = cross_val_predict(clf, X[i], y[i], cv=cv, method="predict_proba")[:, 1]
         return prob, roc_auc_score(y, prob), balanced_accuracy_score(y, prob > 0.5)
+    if task in MULTICLASS:  # epochs: keep each subject's epochs in one fold
+        cv = StratifiedGroupKFold(folds, shuffle=True, random_state=cv_seed)
+        prob = cross_val_predict(clf, X, y, groups=groups, cv=cv, method="predict_proba")
+        return prob, auc_score(y, prob), balanced_accuracy_score(y, prob.argmax(axis=1))
     if task == "ec_eo":  # blocks: keep each participant's blocks in one fold
         cv = StratifiedGroupKFold(folds, shuffle=True, random_state=cv_seed)
     else:  # one sample per participant: no groups needed

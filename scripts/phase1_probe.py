@@ -7,7 +7,8 @@ instance of each extractor is also probed with --cv-seeds, the CV-split variabil
 
 Reads results/phase1/<dataset>/features (phase1_features.py). Writes, next to it:
   metrics.csv            extractor, group, instance, task, cv_seed, n, auc, balanced_accuracy
-  predictions.csv.gz     out-of-fold P(class 1) per sample, for the ensembles of phase 2
+  predictions.csv.gz     out-of-fold P(class 1) per sample (prob_<k> per class for a
+                         multi-class task), for the ensembles of phase 2
 
     python scripts/phase1_probe.py                                   # ds003478
     python scripts/phase1_probe.py --config configs/ds004504.yaml
@@ -37,6 +38,8 @@ parser.add_argument("--cv-seeds", type=seed_range, default=list(range(30)),
 args = parser.parse_args()
 
 cfg = load_config(args.config) if args.config else load_config()
+if "cv_split_seeds" in cfg:  # a dataset whose probes are slow (sleep staging) uses fewer
+    args.cv_seeds = args.cv_seeds[: cfg["cv_split_seeds"]]
 root = Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"]
 labels = task_labels(cfg)
 metrics, preds = [], []
@@ -50,8 +53,10 @@ for ext_dir in sorted(p for p in (root / "features").iterdir() if p.is_dir()):
                 prob, auc, bacc = probe(X, y, groups, task, cv_seed, cfg["cv_folds"])
                 metrics.append(dict(extractor=ext_dir.name, group=str(f["group"]), instance=path.stem,
                                     task=task, cv_seed=cv_seed, n=len(y), auc=auc, balanced_accuracy=bacc))
+                # P(class 1), or one column prob_<k> per class for a multi-class task
+                cols = {"prob": prob} if prob.ndim == 1 else {f"prob_{k}": prob[:, k] for k in range(prob.shape[1])}
                 preds.append(pd.DataFrame(dict(extractor=ext_dir.name, instance=path.stem, task=task,
-                                               cv_seed=cv_seed, sample=ids, label=y, prob=prob)))
+                                               cv_seed=cv_seed, sample=ids, label=y, **cols)))
     m = pd.DataFrame(metrics)
     m = m[(m.extractor == ext_dir.name) & (m.cv_seed == cfg["cv_seed"])]
     for task, g in m.groupby("task"):

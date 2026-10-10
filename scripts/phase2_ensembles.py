@@ -31,7 +31,6 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from sklearn.metrics import roc_auc_score
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -39,7 +38,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config
 from untrained_eeg.foundation import FOUNDATION
-from untrained_eeg.tasks import probe, task_data, task_labels, task_names
+from untrained_eeg.tasks import MULTICLASS, auc_score, predicted, probe, task_data, task_labels, task_names
 
 UNTRAINED = ["cnn1d", "shallow", "eegnet", "eegnet_3ch", "shallow_bcic2a", "scattering"]
 PRETRAINED = ["eegnetv4", "shallow_pretrained"]
@@ -61,7 +60,14 @@ def draws_of(n, k, n_draws, rng):
 
 
 def vote(probs):
-    """Majority vote of the rows' classes. Score = share voting 1; ties go to the mean P."""
+    """Majority vote of the instances' classes (axis 0).
+
+    Two classes: score = share voting 1, ties go to the mean P. Several classes (probs
+    instances x samples x classes): score = share voting each class, ties to the mean P.
+    """
+    if probs.ndim == 3:
+        votes = np.eye(probs.shape[2])[probs.argmax(axis=2)].mean(axis=0)
+        return votes + 1e-9 * probs.mean(axis=0)
     share = (probs > 0.5).mean(axis=0)
     tie = share == 0.5
     share[tie] = np.where(probs[:, tie].mean(axis=0) > 0.5, 0.5 + 1e-9, 0.5)
@@ -100,9 +106,16 @@ for pool, extractors in POOLS.items():
     insts = sorted(set(zip(p.extractor, p.instance)))  # (extractor, instance) members
     for task in TASKS:
         t = p[p.task == task]
-        wide = t.pivot_table(index="sample", columns=["extractor", "instance"], values="prob")[insts]
+        if task in MULTICLASS:  # instances x samples x classes
+            n_cls = len(MULTICLASS[task])
+            wides = [t.pivot_table(index="sample", columns=["extractor", "instance"], values=f"prob_{c}")[insts]
+                     for c in range(n_cls)]
+            wide = wides[0]
+            P = np.stack([w.to_numpy().T for w in wides], axis=2)
+        else:  # instances x samples
+            wide = t.pivot_table(index="sample", columns=["extractor", "instance"], values="prob")[insts]
+            P = wide.to_numpy().T
         y = t.drop_duplicates("sample").set_index("sample").label.loc[wide.index].to_numpy()
-        P = wide.to_numpy().T  # instances x samples
         feats = None
         if len(extractors) == 1:  # features can be averaged only within one extractor
             files = [src / "features" / e / f"{i}.npz" for e, i in insts]
@@ -110,7 +123,8 @@ for pool, extractors in POOLS.items():
             feats = [np.load(f)["feats"] for f in files]
             if len({x.shape for x in feats}) > 1:  # e.g. scattering: feature count depends on J
                 feats = None
-        methods = ["average", "vote"] + (["features"] if feats is not None else [])
+        features_ok = feats is not None and cfg.get("ensemble_features", True)  # off where probes are slow
+        methods = ["average", "vote"] + (["features"] if features_ok else [])
         for k in range(1, min(len(insts), args.max_k) + 1):
             for method in methods:
                 draws = draws_of(len(insts), k, args.feature_draws if method == "features" else args.draws, rng)
@@ -119,14 +133,14 @@ for pool, extractors in POOLS.items():
                                         f0["participant_id"], task, labels) for d in draws]
                     scores = Parallel(n_jobs=args.workers)(
                         delayed(feature_ensemble)(X, yy, g, task, cfg) for X, yy, g, _ in inputs)
-                    ids = inputs[0][3]
-                    scores = pd.DataFrame(np.array(scores), columns=ids)[list(wide.index)].to_numpy()  # same order as P
+                    order = pd.Index(inputs[0][3]).get_indexer(wide.index)  # samples in the order of P
+                    scores = np.array([s[order] for s in scores])
                 elif method == "average":
                     scores = np.array([P[d].mean(axis=0) for d in draws])
                 else:
                     scores = np.array([vote(P[d]) for d in draws])
-                aucs = np.array([roc_auc_score(y, s) for s in scores])
-                cls = scores > 0.5
+                aucs = np.array([auc_score(y, s) for s in scores])
+                cls = np.array([predicted(s) for s in scores])
                 for i, (d, a) in enumerate(zip(draws, aucs)):
                     rows.append(dict(pool=pool, method=method, task=task, k=k, draw=i, auc=a,
                                      instances=" ".join(f"{insts[j][0]}:{insts[j][1]}" for j in d)))
@@ -134,7 +148,7 @@ for pool, extractors in POOLS.items():
                 summary.append(dict(pool=pool, method=method, task=task, k=k, draws=len(draws),
                                     auc_mean=aucs.mean(), auc_sd=aucs.std(ddof=1) if many else np.nan,
                                     median_score_sd=np.median(scores.std(axis=0, ddof=1)) if many else np.nan,
-                                    flip_rate=(cls.any(axis=0) & ~cls.all(axis=0)).mean()))
+                                    flip_rate=(cls != cls[0]).any(axis=0).mean()))
         s = pd.DataFrame(summary)
         s = s[(s.pool == pool) & (s.task == task) & (s.method == "average")]
         print(f"{pool:20s} {task:10s} average: AUC K=1 {s.auc_mean.iloc[0]:.3f} -> "
