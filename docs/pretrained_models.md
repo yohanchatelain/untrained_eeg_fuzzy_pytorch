@@ -42,7 +42,6 @@ accept other channel sets through electrode names or positions).
 |---|---|---|---|
 | EEGNetv4 (12) | `load_eegnetv4` in `src/untrained_eeg/pretrained.py`; weights from `scripts/00_download_pretrained.sh` | `tests/test_pretrained.py`: bit-identical features to braindecode 1.8.1 | Feed C3, Cz, C4 (`C3, CZ, C4` in our config) at 128 Hz, in microvolts |
 | ShallowFBCSPNet (2) | `load_shallow` in `src/untrained_eeg/pretrained.py`; same download script (safetensors) | `tests/test_pretrained.py`: bit-identical features to braindecode 1.8.1 | Feed the 22 BCI IV 2a channels at 250 Hz, microvolts, band-pass 4-38 Hz, exponential moving standardization (factor_new=1e-3, init_block_size=1000) |
-
 | EEGPT, LaBraM, BENDR (interpolated), CBraMod, CodeBrain, EEG-DINO small and medium, Signal-JEPA | `Foundation` in `src/untrained_eeg/foundation.py`, through braindecode 1.8.1 (not plain PyTorch: Fuzzy is paused); weights from the braindecode Hugging Face page, cached in `data/pretrained/hf` | Every pretrained tensor must load (only EEGPT's channel table, rebuilt for our channels, and the heads are left out) | Each gets its pretraining rate (200, 250 or 128 Hz), channels (all, the 19 of 10-20, or Lee2019's) and scale; CodeBrain needs 30 s windows. EEGPT in millivolts and BENDR min-max scaled are assumptions |
 
 Input scale of EEGNetv4: the cards do not say. The first batch-norm's running variance gives
