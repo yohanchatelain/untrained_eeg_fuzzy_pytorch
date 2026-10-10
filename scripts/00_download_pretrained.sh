@@ -24,3 +24,17 @@ for repo in plot_bcic_iv_2a_moabb_trial plot_bcic_iv_2a_moabb_cropped; do
     done
     echo "downloaded $dest"
 done
+
+# Foundation models (src/untrained_eeg/foundation.py): braindecode's Hugging Face repositories,
+# cached in data/pretrained/hf. Compute nodes have no internet: the jobs read this cache offline.
+HF_HOME="$PWD/data/pretrained/hf" python3 - <<'PY'
+import sys
+sys.path.insert(0, "src")
+from huggingface_hub import snapshot_download
+from untrained_eeg.foundation import FOUNDATION
+
+repos = {repo for _, repo, *_ in FOUNDATION.values()} | {"braindecode/signal-jepa"}
+for repo in sorted(repos):
+    snapshot_download(repo)
+    print("downloaded", repo)
+PY
