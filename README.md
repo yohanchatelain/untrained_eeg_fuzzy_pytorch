@@ -61,7 +61,7 @@ Prefer a notebook? Open [notebooks/quickstart.ipynb](notebooks/quickstart.ipynb)
 
 | Goal | Level | Where |
 |---|---|---|
-| List open EEG datasets | Beginner | [docs/datasets.md](docs/datasets.md) |
+| The six datasets, and how to add one | Beginner | [docs/datasets.md](docs/datasets.md) |
 | Run an untrained CNN on one dataset | Beginner | `scripts/01_run_untrained.py`, `notebooks/quickstart.ipynb` |
 | Compare across seeds | Intermediate | `scripts/02_seed_variability.py` |
 | Run with Fuzzy PyTorch (MCA) | Intermediate | `scripts/03_mca_variability.py`, [environment/fuzzy_container.md](environment/fuzzy_container.md) |
