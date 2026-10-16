@@ -43,16 +43,51 @@ disease, age, motor imagery and sleep staging). Pretrained EEGNet checkpoints ga
 0.055 AUC over randomly initialized copies of the same network, less than the spread across
 random seeds on all but one task. Single foundation models reach the highest AUC on most tasks,
 but averaging the predictions of 30 untrained ShallowFBCSPNet instances closes most of the gap,
-and no foundation model is significantly better than this ensemble. Single random initializations of the same network differ by as much as 0.25 AUC, so untrained
-baselines should be reported over many seeds or as ensembles.
+and no foundation model is significantly better than this ensemble. Single random initializations of the same network differ by up to 0.26 AUC on depression and
+0.49 on Parkinson's disease, so untrained baselines should be reported over many seeds or as
+ensembles.
 \end{abstract}
 
 \section{Introduction}
-\todo{write. Draft notes: untrained CNNs are known to give useful features for 2D and 3D
-neuroimaging, because the architecture alone imposes a representation \citep{saxe2011}; EEG
-foundation models are compared with trained baselines, rarely with untrained ones; question:
-how much do pretrained weights add over the architecture and over fixed wavelets; variability
-across seeds as part of the comparison; contributions.}
+Pretrained EEG models now range from small supervised networks trained on one motor-imagery
+dataset to self-supervised foundation models trained on thousands of hours of clinical
+recordings \citep{kostas2021bendr, jiang2024labram, wang2024eegpt, wang2025cbramod}. These
+models are evaluated by fine-tuning them or by fitting a probe on their frozen features, and they
+are compared with supervised networks trained from scratch on the target task \citep{roy2019}.
+That comparison measures the value of a pretrained model against task-specific training. It does
+not measure what pretraining adds to the network itself: a frozen network with random weights also
+produces features, shaped by its temporal convolutions, spatial mixing and pooling.
+
+Random-weight networks are a strong baseline in other domains. In object recognition, random
+convolutional filters followed by rectification and pooling reached accuracies close to those of
+learned filters \citep{jarrett2009}, and the architecture alone accounted for much of the
+performance of the learned network \citep{saxe2011}. Random features approximate kernel machines
+\citep{rahimi2007}, and an untrained convolutional generator is a sufficient prior for image
+restoration \citep{ulyanov2018}. \todo{cite untrained CNNs on 2D/3D neuroimaging (Chatelain et
+al., 2026?).} The wavelet scattering transform gives a second reference that learns nothing and,
+unlike a random network, has no seed: a cascade of fixed wavelet filters and modulus operators whose
+averaged outputs are stable to small deformations \citep{mallat2012, anden2014}. We are not aware of
+a comparison of pretrained EEG models with untrained networks and scattering under the same frozen
+readout and across several tasks.
+
+Such a comparison has to account for variability that a single trained baseline hides. The
+features of an untrained network change with the random seed, so one seed can land well above or
+below the typical result; seed variance is a known source of spurious differences between methods
+\citep{bouthillier2021}. Clinical EEG datasets are small, and with tens of participants per group
+the uncertainty of a cross-validated AUC is of the same order as the differences between methods
+\citep{varoquaux2018}. A pretrained checkpoint or a foundation model is a single draw from its own
+training process, whose variability is usually unknown.
+
+We compare four kinds of frozen feature extractors: untrained convolutional networks (30 seeds
+each), wavelet scattering, pretrained convolutional networks and eight foundation models. Each is
+read out by the same logistic-regression probe on ten classification tasks from six open datasets.
+The design isolates the pretrained weights by pairing each pretrained network with untrained copies
+of the same architecture fed the same input, measures the spread across seeds, checkpoints and
+cross-validation splits, and compares single foundation models with ensembles of untrained instances.
+Significance is tested with permutations that refit every instance's probe, so that the test of an
+extractor uses all its instances rather than one chosen seed. Pretrained EEGNet weights improved the
+AUC over their untrained twins by at most 0.055, and no foundation model was significantly better
+than an ensemble of 30 untrained ShallowFBCSPNet instances.
 
 \section{Methods}
 
@@ -380,12 +415,76 @@ overlap. Dashed line: best single foundation model, named in each panel.}
 % seeds are in results/phase2/<dataset>/summary.csv (median_score_sd, flip_rate).
 
 \section{Discussion}
-\todo{write. Points to cover: architecture vs pretrained weights (Table~\ref{tab:matched});
-foundation models vs ensembles and scattering; seed variability and how to report untrained
-baselines; near-chance clinical tasks (BDI, Parkinson's) and sample size; limitations: frozen
-features and a linear probe only, one fixed preprocessing per model, undocumented input scaling
-(BENDR, EEGPT), weak ShallowFBCSPNet checkpoints, no foundation model on Sleep-EDF, the
-ds002778 README's warning against patient-vs-control claims from this dataset alone.}
+
+\paragraph{Pretrained weights add little to these architectures.} With architecture and input held
+fixed, the EEGNetv4 checkpoints changed the AUC by $-0.039$ to $+0.055$ relative to random
+initializations, within one seed SD on eight of nine tasks, and the difference was significant only
+for Alzheimer's disease and motor imagery (Table~\ref{tab:matched}). Motor imagery is the task
+closest to the checkpoints' training data, so the one gap larger than the seed SD is where transfer
+is expected. The ShallowFBCSPNet checkpoints scored below their untrained twins on all three
+ds003478 tasks. These results are consistent with the probe drawing most of its information from
+what the architecture computes regardless of its weights: band-limited temporal filters, spatial
+combinations of channels and pooled power. They bound the value of small supervised pretraining (one
+motor-imagery dataset per EEGNetv4 checkpoint, one subject for ShallowFBCSPNet) and say nothing
+about networks of the same size pretrained on large corpora, which we did not test.
+
+\paragraph{Foundation models lead on single instances, not against ensembles.} The best single
+foundation model had the highest AUC on 8 of the 9 tasks where foundation models ran
+(Table~\ref{tab:best}), yet none was significantly better than the averaged predictions of 30
+untrained ShallowFBCSPNet instances, and the 13 significant differences all favoured the ensemble.
+Averaging the predictions of instances with different random weights reduces the variance that each
+random feature map adds to the probe's output; most of the gain arrived by $K = 5$--10
+(Fig.~\ref{fig:ensembles}). Scattering, a single deterministic transform, exceeded the best untrained
+network on 7 of 10 tasks and every foundation model on motor imagery. Its largest margins over the
+best untrained network were on motor imagery ($+0.065$), FTD ($+0.056$), age with eyes closed
+($+0.045$) and eyes closed vs open ($+0.027$). Three of these four tasks have established spectral
+markers (sensorimotor rhythms, age-related slowing, alpha power), which time-averaged scattering
+coefficients summarize directly; this explanation is consistent with the data but was not tested
+here.
+Three features of our protocol may understate the foundation models. They were used frozen with
+mean-pooled features, whereas most were designed to be fine-tuned; the input scaling of BENDR
+and EEGPT had to be assumed; and each model received its pretraining sampling rate and channel set
+through resampling and channel selection that may differ from its pretraining pipeline. Our results
+therefore compare frozen representations under one linear readout. The comparison is also
+asymmetric in the other direction: the foundation-model column of Table~\ref{tab:best} takes the
+maximum over eight models chosen after the fact, while the other columns average over instances.
+
+\paragraph{One seed is not a baseline.} On BDI with eyes closed, the AUC of single EEGNet seeds
+ranged from 0.435 to 0.680, and on Parkinson's single 1D CNN seeds ranged from 0.379 to 0.871. A
+study that reports one random initialization can therefore obtain almost any result in that range,
+and a pretrained model compared with it can appear better or worse by chance. The choice of test
+mattered as well. A label permutation of the 30-seed 1D CNN ensemble that did not refit the probe
+found BDI with eyes closed above chance ($p_\text{Holm} = 0.026$), but the refit permutation, which
+accounts for the probe having been fitted on the true labels \citep{ojala2010}, did not, whether the
+statistic was the median instance ($p_\text{Holm} = 0.16$), the ensemble (0.32) or the best instance
+(0.60). We suggest reporting untrained baselines as a distribution over seeds or as an ensemble, and
+testing them with a refit permutation over all instances. The same reasoning applies to pretrained
+models, for which we measured only split variability: a foundation model is one draw from a
+pretraining run, and its variability across pretraining seeds is unknown.
+
+\paragraph{Clinical tasks near chance.} No extractor detected high vs low BDI, and on Parkinson's
+only EEGPT exceeded chance under the primary test. These are the smallest samples in the study. For
+an AUC of 0.64 with 39 and 74 participants per group, the normal approximation of
+\citet{hanley1982} gives a 95\,\% interval of about 0.53--0.75; for an AUC of 0.85 with 15 and 16
+participants, about 0.71--0.99. Differences between extractors on these tasks are smaller than these
+intervals, and Signal-JEPA's AUC of 0.292 on Parkinson's shows that a single model can also land far
+below chance on 31 participants. The ds002778 curators advise against patient-vs-control claims from
+that dataset alone; we report the Parkinson's results as a comparison between extractors on the same
+samples, not as a biomarker.
+
+\paragraph{Scope.} The conclusions hold for frozen features read out by a linear probe, with one
+preprocessing pipeline per model and one fixed cross-validation split for the main results (the
+split SD, 0.026--0.052 on BDI with eyes closed, is reported separately). The tests other than the
+primary one condition on the observed samples: they ask whether the weights change the result beyond
+the spread across instances, not whether the result would generalize to new participants. Leakage
+was checked against the pretraining corpora that the model authors published; models whose corpora we
+could not verify were left out, which excludes several recent foundation models. Sleep-EDF was
+evaluated with untrained networks and scattering only.
+
+On these ten tasks, a frozen untrained network, averaged over a few dozen random initializations, or
+a fixed wavelet transform reached AUCs that no pretrained model exceeded significantly. Pretrained
+EEG models should therefore be compared with untrained instances of their own architecture and with
+scattering, and every such comparison should report the variability across instances.
 
 \section*{Data and code availability}
 All datasets are openly available (Table~\ref{tab:tasks}). The code, configurations and the
