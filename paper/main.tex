@@ -1,0 +1,402 @@
+% Paper draft. Build: latexmk -pdf main.tex (in paper/). Figures: python scripts/paper_figures.py.
+% Numbers come from results/ (see the comment above each table); \todo marks what is still open.
+\documentclass[11pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{siunitx}
+\usepackage[authoryear,round]{natbib}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\graphicspath{{figures/}}
+\sisetup{detect-all}
+
+\title{\todo{title}\\Untrained networks, wavelet scattering and pretrained models\\as frozen EEG feature extractors}
+\author{Roy Seo$^{1}$, Yohan Chatelain$^{1,\dagger}$, Mina Alizadeh$^{2}$, Injy Fouda$^{3}$,
+  Jishang Jiang$^{3}$, Tristan Glatard$^{1,5,6,\dagger}$\\[1ex]
+  \small $^{1}$Krembil Centre for Neuroinformatics, Centre for Addiction and Mental Health, Toronto\\
+  \small $^{2}$Department of Computer Science and Software Engineering,\\
+  \small Gina Cody School of Engineering and Computer Science, Concordia University, Montreal\\
+  \small $^{3}$Integrated Program in Neuroscience, Faculty of Medicine and Health Sciences,\\
+  \small McGill University, Montreal, Canada\\
+  \small $^{4}$Department of Neurology and Neurosurgery, McGill University, Montreal, Canada \todo{unused}\\
+  \small $^{5}$Department of Psychiatry, University of Toronto, Toronto, Canada\\
+  \small $^{6}$Department of Computer Science, University of Toronto, Toronto, Canada}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\todo{draft, to rewrite once the discussion is settled}
+Pretrained EEG models, including large foundation models, are usually compared with trained
+baselines. We compare them with feature extractors that learn nothing: convolutional networks
+with random weights and the wavelet scattering transform. All extractors are frozen and read
+out by the same logistic-regression probe on ten classification tasks from six open datasets
+(eyes closed vs open, depression, Alzheimer's disease, frontotemporal dementia, Parkinson's
+disease, age, motor imagery and sleep staging). Pretrained EEGNet checkpoints gain at most
+0.055 AUC over randomly initialized copies of the same network, less than the spread across
+random seeds on all but one task. Single foundation models reach the highest AUC on most tasks,
+but averaging the predictions of 30 untrained ShallowFBCSPNet instances closes most of the gap,
+and no foundation model is significantly better than this ensemble. Single random initializations of the same network differ by as much as 0.25 AUC, so untrained
+baselines should be reported over many seeds or as ensembles.
+\end{abstract}
+
+\section{Introduction}
+\todo{write. Draft notes: untrained CNNs are known to give useful features for 2D and 3D
+neuroimaging, because the architecture alone imposes a representation \citep{saxe2011}; EEG
+foundation models are compared with trained baselines, rarely with untrained ones; question:
+how much do pretrained weights add over the architecture and over fixed wavelets; variability
+across seeds as part of the comparison; contributions.}
+
+\section{Methods}
+
+\subsection{Datasets and tasks}
+We evaluated all feature extractors on ten classification tasks drawn from six openly
+available EEG datasets (Table~\ref{tab:tasks}). Each dataset is downloaded from its public
+source. \todo{the ds002778 curators ask to be contacted before submission: confirm done.}
+
+\begin{table}[t]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{Tasks and datasets. Tasks 2 and 6 are each evaluated separately on eyes-closed and
+eyes-open recordings, giving ten tasks.}
+\label{tab:tasks}
+\begin{tabular}{@{}rllllr@{}}
+\toprule
+\# & Task & Dataset & Sample & Classes & Size \\
+\midrule
+1 & Eyes closed vs open (positive control) & ds003478 & 1-min block & 2 & 113 participants \\
+2 & High vs low BDI, eyes closed / open & ds003478 & participant & 2 & 74 low, 39 high \\
+3 & Alzheimer's disease vs control & ds004504 & participant & 2 & 36 AD, 29 controls \\
+4 & Frontotemporal dementia vs control & ds004504 & participant & 2 & 23 FTD, 29 controls \\
+5 & Parkinson's disease (off med.) vs control & ds002778 & participant & 2 & 15 PD, 16 controls \\
+6 & Young vs old, eyes closed / open & MPI-LEMON & participant & 2 & 137 young, 65 old \\
+7 & Left vs right hand motor imagery & BNCI2014\_001 & trial & 2 & 9 subjects, 2,592 trials \\
+8 & Sleep staging (W, N1, N2, N3, REM) & Sleep-EDF & 30-s epoch & 5 & 20 subjects, 5,767 epochs \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Depression (ds003478).} ``EEG: Depression rest'' \citep[OpenNeuro ds003478 v1.1.0,
+CC0;][]{cavanagh_ds003478, cavanagh2019} contains 122 college-aged participants recruited
+from undergraduate psychology courses at the University of Arizona from mass-screening Beck
+Depression Inventory (BDI) scores, with the BDI re-administered at the laboratory session.
+Following the original study, we excluded one participant (original ID 544) whose BDI was
+unstable between screening and the laboratory session. Participants were labelled by laboratory
+BDI with the original cut-offs (low: BDI~$\le 6$, $n = 74$; high: BDI~$\ge 17$, $n = 39$); the
+eight participants with intermediate scores were excluded. The final sample has 113 participants
+(age 18--24 years, $M = 18.93$, $SD = 1.21$, missing for one; 67 female, 46 male). Structured
+clinical interviews were available only for 26 high-BDI participants (9 current major depressive
+disorder, 8 past, 9 neither), so BDI was the only grouping variable. EEG was recorded with a
+64-channel Neuroscan SynAmps2 system (500~Hz; ground AFz; online reference between Cz and CPz).
+Each participant completed two resting recordings of about 6~min made of 1-min eyes-open and
+eyes-closed blocks in counterbalanced order. We analysed run~1 only: it is available for all
+participants, precedes the experimental task and is not affected by fatigue.
+
+\paragraph{Other datasets.} ds004504 \citep{miltiadous2023} provides resting eyes-closed EEG
+(19 channels, 500~Hz) of patients with Alzheimer's disease, frontotemporal dementia and healthy
+controls; each task compares one patient group with the controls. ds002778
+\citep{rockhill_ds002778, jackson2019, swann2015, george2013} provides resting EEG (32 scalp
+channels, 512~Hz) of patients with Parkinson's disease, recorded off medication, and matched
+controls; the task was kept despite its small size. For MPI-LEMON \citep{babayan2019} we used
+the authors' preprocessed eyes-closed and eyes-open recordings (250~Hz; two participants at
+100~Hz) of the 137 participants aged 20--35 and the 65 aged 55--80. BNCI2014\_001
+\citep[BCI Competition IV 2a;][]{tangermann2012, jayaram2018} has 22 EEG channels at 250~Hz;
+we used the left- and right-hand imagery trials of both sessions. Sleep-EDF
+\citep[sleep cassette;][]{kemp2000, goldberger2000} was restricted to the first 20 subjects
+(39 nights) and the Fpz--Cz and Pz--Oz derivations at 100~Hz; stages 3 and 4 were merged into N3,
+and at most 30 epochs per stage and night were drawn with a fixed seed.
+
+\subsection{Preprocessing}
+Preprocessing used MNE-Python \citep{gramfort2013}. Unless stated otherwise, each recording was
+restricted to its scalp channels (60 for ds003478, 19 for ds004504, 32 for ds002778, 22 for
+BNCI2014\_001), re-referenced to the common average, band-pass filtered at 1--40~Hz, resampled to
+128~Hz and cut into non-overlapping 2-s windows. For ds003478 the six 1-min blocks of run~1 were
+located from the event triggers (30 windows each). The continuous recordings of ds004504,
+ds002778 and LEMON were cut into 60-s segments of 30 windows. In LEMON, channels removed by the
+authors (56--61 remain per file) were rebuilt by spherical-spline interpolation, giving 61
+channels for everyone. For BNCI2014\_001 the imagery period (2--6~s after trial onset) gives two
+windows per trial. Sleep-EDF kept its bipolar derivations, was band-pass filtered at 0.5--40~Hz
+to keep slow waves, stayed at 100~Hz and used one 30-s window per scored epoch.
+
+Each pretrained model received the input it was trained on (channels, sampling rate, filtering,
+scaling; Section~\ref{sec:extractors}), and each pretrained CNN was paired with an untrained twin
+of the same architecture receiving the identical input.
+
+\subsection{Feature extractors}\label{sec:extractors}
+All extractors were frozen: no weights were trained or fine-tuned in this study. They fall into
+four groups.
+
+\paragraph{Untrained CNNs.} We treat randomly initialized CNNs as fixed, random, nonlinear
+measurement operators whose features reflect only the architecture's inductive biases (temporal
+locality, weight sharing, spatial mixing, pooling) \citep{saxe2011}. We used (i) a small 1D CNN:
+a temporal convolution over all channels (32 filters, kernel 25), ELU, average pooling by 4, a
+second convolution (64 filters, kernel 11), ELU and a global average over time, giving 64
+features; (ii) ShallowFBCSPNet \citep{schirrmeister2017} and (iii) EEGNet \citep{lawhern2018}
+on all channels, without their classification layer. Both are plain PyTorch copies of the
+braindecode~1.8.1 implementations, tested to give bit-identical outputs. To provide matched
+baselines for the pretrained CNNs, we also used (iv) EEGNet restricted to C3, Cz and C4 and
+(v) ShallowFBCSPNet with the BCI~IV~2a input of its pretrained checkpoints (22 channels, 4--38~Hz,
+250~Hz, exponential moving standardization). Weights were drawn as in braindecode (Xavier-uniform
+for the convolutions of ShallowFBCSPNet and EEGNet, PyTorch's default Kaiming-uniform for the
+1D CNN) for 30 seeds (0--29). Models ran in evaluation mode (dropout off, batch normalization with
+its initial running statistics).
+
+\paragraph{Pretrained CNNs.} We used published braindecode checkpoints as released. Ten
+EEGNetv4 checkpoints, each trained on one MOABB motor-imagery dataset, take C3, Cz and C4 at
+128~Hz; two further checkpoints trained on another input scale (Cho2017, Ofner2017) were
+excluded, and on motor imagery the checkpoint trained on BNCI2014\_001 was left out, leaving
+nine. Their training band-pass is not published; they received our 1--40~Hz data. Two
+ShallowFBCSPNet checkpoints (braindecode tutorial models, both trained on subject 3 of
+BNCI2014\_001) take the 22-channel BCI~IV~2a input; they were run on ds003478 only (not on BNCI2014\_001, their training data).
+
+\paragraph{Wavelet scattering.} As a fixed reference that is neither learned nor random, we
+computed the 1D wavelet scattering transform \citep{mallat2012, anden2014} of each channel with
+Kymatio \citep{andreux2020}: Morlet wavelets, orders 0--2, $Q = (8, 1)$, $\log(1 + x)$ applied to
+orders 1 and 2, then averaged over time. Its only free parameter, the largest scale $J$
+(averaging window about $2^J$ samples, 62~ms to 2~s at 128~Hz), took six values, $J = 3, \dots, 8$,
+giving six instances.
+
+\paragraph{Foundation models.} We evaluated the scalp-EEG foundation models whose weights are
+open and load in braindecode~1.8.1: EEGPT \citep{wang2024eegpt}, LaBraM \citep{jiang2024labram},
+BENDR \citep{kostas2021bendr}, CBraMod \citep{wang2025cbramod}, CodeBrain \citep{ma2026codebrain},
+EEG-DINO small and medium \citep{wang2025eegdino} and Signal-JEPA \citep{guetschel2024sjepa}.
+Models needing braindecode's development version (MIRepNet, BrainOmni) and models whose
+pretraining corpus we could not check were not used; REVE was excluded because its weights
+require registration (its corpus also includes ds002778). No model was evaluated on a dataset in
+its pretraining data. Each model received its pretraining sampling rate, channel set and window
+(30-s windows for CodeBrain); CodeBrain and EEG-DINO need the 19 channels of the 10--20 system and
+were not run on BNCI2014\_001, and no foundation model was run on Sleep-EDF's two bipolar
+derivations. Features were averaged over time patches, keeping channels. The input scaling of
+BENDR (per-channel min--max) and EEGPT (millivolts) is not documented and was assumed. Each
+foundation model is a single instance.
+
+\paragraph{Feature aggregation.} Window features were averaged within each 1-min block or 60-s
+segment. For participant-level tasks they were then averaged over the participant's segments
+(of one condition for the eyes-closed and eyes-open tasks), giving one feature vector per sample.
+For motor imagery the two windows of a trial were averaged.
+
+\subsection{Probe}
+Every extractor was read out by the same probe: standardization (fitted within training folds)
+and L2-regularized logistic regression ($C = 1$, L-BFGS, at most 5000 iterations;
+scikit-learn, \citealp{pedregosa2011}), under stratified 5-fold cross-validation with one fixed
+fold assignment shared by all extractors and instances. Folds kept all blocks of a participant
+together for eyes closed vs open, and all epochs of a subject together for sleep staging
+(stratified group $k$-fold). For motor imagery each subject had its own 5-fold cross-validation,
+and the AUC was computed over all subjects' trials. We report the ROC AUC of the out-of-fold
+predictions (macro one-vs-rest AUC for sleep staging) and the balanced accuracy.
+
+\subsection{Sources of variability}
+For each extractor we measured (i) instance variability, the SD of AUC across instances
+(30 seeds, 10 or 2 checkpoints, or 6 scattering scales; undefined for single-instance foundation
+models), and (ii) split variability, the SD of AUC of one instance over 30 cross-validation fold
+assignments (10 for sleep staging).
+
+\subsection{Pretrained vs matched untrained networks}
+Each pretrained CNN was compared with its untrained twin (same architecture, channels and
+preprocessing; only the weights differ). We report the gap (mean pretrained AUC minus mean
+untrained AUC) and the share of untrained seeds that a checkpoint beats, averaged over
+checkpoints (the normalized Mann--Whitney $U$; 50\,\% means no better than a random
+initialization).
+
+\subsection{Ensembles of instances}
+For each pool of instances and ensemble size $K$ we drew up to 50 random subsets of $K$ instances
+(20 for averaged features) and combined them by (i) averaging the out-of-fold predicted
+probabilities, (ii) majority vote, with ties (even $K$) broken by the mean probability, or
+(iii) averaging the features before fitting one probe per draw. Averaged features need instances
+of one extractor with the same feature size, so they were computed on single-extractor pools
+only (not on scattering, nor on Sleep-EDF where a probe per draw is too slow). Besides one pool per
+extractor, we formed mixed pools: the three all-channel untrained architectures (1D CNN,
+ShallowFBCSPNet, EEGNet), the pretrained CNNs, the foundation models, and all pretrained models.
+We report the mean and SD of AUC across draws. Draws from a finite pool overlap more as $K$ grows
+(a single subset exists at $K$ equal to the pool size), so the SD at large $K$ is a lower bound on
+the variability of independent ensembles.
+
+\subsection{Statistical tests}\label{sec:tests}
+\paragraph{Primary test.} Does a typical instance of an extractor beat chance? For each
+extractor and task, the probe of every instance was refit on the same shuffled labels, with the
+same folds, and the median AUC over instances was compared with its null distribution
+\citep{ojala2010}. Labels were shuffled within participant where a participant contributes several
+samples (eyes closed vs open), within subject for motor imagery, and freely otherwise. We ran up to
+10,000 permutations and stopped once 20 null values reached the observed one
+\citep[$p = 20/n$;][]{besag1991}. $p$-values were Holm-corrected \citep{holm1979} over all
+extractor $\times$ task tests of a dataset. This test was not run on Sleep-EDF, where five-class
+probes are slow and every extractor is far above chance.
+
+\paragraph{Secondary tests.} Each Holm-corrected within its family and dataset: (1) the same
+refit permutation for the ensemble of all instances (averaged predictions) and for the best
+instance (maximum over instances, compared with the null maximum, so the choice of the best is
+accounted for); (2) the refit permutation of each extractor's first instance alone (1,000
+permutations, 200 for sleep staging); (3) pretrained checkpoints vs the untrained seeds of the
+same architecture and input (two-sided Mann--Whitney $U$); (4) scattering scales vs the instances
+of each other extractor with at least three instances (Mann--Whitney $U$); (5) each foundation
+model vs the averaged predictions of all untrained ShallowFBCSPNet instances and of all scattering
+scales on the same samples (paired permutation, 2,000 permutations, two-sided). Instance AUCs share
+the same samples, so tests (3)--(5) ask whether the weights change the result beyond the
+weight-to-weight spread; they do not generalize to new participants.
+
+\section{Results}
+
+\subsection{Sample}
+In ds003478 the low-BDI group had a mean BDI of 1.66 ($SD = 1.55$) and the high-BDI group 23.56
+($SD = 4.00$). The groups did not differ in age ($t(110) = 0.69$, $p = .49$), but the high-BDI
+group included more women (72\,\% vs 53\,\%; $\chi^2(1) = 3.86$, $p = .050$) and had much higher
+trait anxiety (STAI 56.46 vs 30.88; Welch's $t = 20.64$, $p < .001$). Sample sizes of the other
+datasets are in Table~\ref{tab:tasks}.
+
+\subsection{The pipeline recovers a known effect}
+On the positive control (eyes closed vs open) all groups of extractors performed well: wavelet
+scattering reached a mean AUC of 0.974 over its six scales, untrained ShallowFBCSPNet 0.947 over
+30 seeds, the pretrained ShallowFBCSPNet checkpoints 0.893 and the best foundation model
+(CodeBrain) 0.984 (Table~\ref{tab:best}; Fig.~\ref{fig:phase1}). The median instance of every
+extractor except BENDR was above chance. The pipeline thus detects the well-known alpha increase
+with eye closure, and near-chance results elsewhere are not due to a pipeline failure.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{fig1_phase1}
+\caption{AUC of every instance (small dots: seeds, checkpoints or scattering scales) of every
+extractor on the ten tasks. Large marker: median instance, filled when it beats chance (median
+instance refit permutation, Holm-corrected; on sleep staging, where it was not run, the first
+instance). Dashed line: chance. Empty rows: extractor not run on that dataset.}
+\label{fig:phase1}
+\end{figure}
+
+\subsection{Best extractor of each kind}
+Table~\ref{tab:best} lists, for each task, the best extractor of each group (mean AUC over
+instances; foundation models are single instances). The best single foundation model scored
+highest on 8 of the 9 tasks where foundation models could be run; on motor imagery, scattering
+(0.875) exceeded the best foundation model (EEGPT, 0.856). Scattering exceeded the best untrained
+CNN on 7 of 10 tasks. The foundation-model column reports the maximum over eight models, whereas
+the other columns report means over instances, which favours the foundation-model column.
+
+% results/phase1/<dataset>/metrics.csv, cv_seed 0: mean AUC over instances, best per group.
+\begin{table}[t]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{Best extractor of each group per task (mean AUC over instances).}
+\label{tab:best}
+\begin{tabular}{@{}llllll@{}}
+\toprule
+Dataset & Task & Untrained CNN & Scattering & Pretrained CNN & Foundation \\
+\midrule
+ds003478 & Eyes closed vs open & ShallowFBCSPNet 0.947 & 0.974 & Shallow 0.893 & CodeBrain 0.984 \\
+ds003478 & BDI, eyes closed & Small 1D CNN 0.636 & 0.638 & Shallow 0.558 & EEG-DINO M 0.668 \\
+ds003478 & BDI, eyes open & Shallow 2a 0.601 & 0.422 & EEGNetv4 0.547 & EEGPT 0.639 \\
+ds004504 & AD vs control & ShallowFBCSPNet 0.839 & 0.844 & EEGNetv4 0.773 & LaBraM 0.912 \\
+ds004504 & FTD vs control & ShallowFBCSPNet 0.808 & 0.864 & EEGNetv4 0.642 & CBraMod 0.911 \\
+ds002778 & PD vs control & ShallowFBCSPNet 0.591 & 0.551 & EEGNetv4 0.589 & EEGPT 0.846 \\
+LEMON & Young vs old, EC & ShallowFBCSPNet 0.891 & 0.936 & EEGNetv4 0.846 & LaBraM 0.971 \\
+LEMON & Young vs old, EO & ShallowFBCSPNet 0.940 & 0.946 & EEGNetv4 0.877 & EEGPT 0.977 \\
+BNCI2014\_001 & Left vs right MI & ShallowFBCSPNet 0.810 & 0.875 & EEGNetv4 0.793 & EEGPT 0.856 \\
+Sleep-EDF & 5-stage (macro) & Small 1D CNN 0.935 & 0.929 & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The depression and Parkinson's tasks were near chance for most extractors. With the primary test,
+78 of the 130 extractor $\times$ task tests were significant: all 12 on motor imagery, 26 of 28 on
+age, 24 of 28 on dementia, 15 of 48 on ds003478 (all on eyes closed vs open) and 1 of 14 on
+Parkinson's. No extractor was significant on BDI with eyes closed or open; the closest was the
+small 1D CNN on eyes closed (median instance AUC 0.644, $p = 0.005$, $p_\text{Holm} = 0.16$). The
+ensemble and best-instance statistics agreed with the median on every test but one (EEGNet on FTD:
+significant for the ensemble and the median, not for the best instance). On Parkinson's only EEGPT
+was significant (AUC 0.846, $p_\text{Holm} = 0.043$), while Signal-JEPA scored well below chance
+(0.292); with $n = 31$ these results should be read with care \todo{check whether Signal-JEPA's
+inversion survives stronger regularization}. BENDR was the weakest extractor on most tasks (AUC 0.43--0.68);
+since its input scaling is undocumented, we do not read this as evidence about the model.
+
+\subsection{Pretraining adds little over a matched random initialization}
+Against untrained twins with identical architecture and input, the EEGNetv4 checkpoints improved
+mean AUC on 8 of 9 tasks, by at most 0.055 (FTD; gaps $-0.039$ to $+0.055$; Table~\ref{tab:matched}).
+The gap was smaller than the untrained seed SD on every task but motor imagery ($+0.021$ vs SD
+0.015), and a checkpoint beat on average 30--75\,\% of the untrained seeds. The difference was
+significant for Alzheimer's disease ($p_\text{Holm} = 0.042$) and motor imagery (0.029), borderline
+for FTD (0.051) and not significant elsewhere ($p_\text{Holm} \ge 0.41$). The two ShallowFBCSPNet
+checkpoints underperformed their twins on all three ds003478 tasks (gaps $-0.006$, $-0.037$,
+$-0.057$; 25--45\,\% of seeds beaten; $p_\text{Holm} = 0.92$), although these single-subject tutorial
+models are weakly pretrained.
+
+% results/dashboard/p1_matched.csv and the vs_matched rows of results/stats/stats.csv.
+\begin{table}[t]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{Pretrained checkpoints vs their matched untrained baseline: mean AUCs, gap, SD of the
+baseline over 30 seeds, share of seeds a checkpoint beats, and Holm-corrected Mann--Whitney $p$.}
+\label{tab:matched}
+\begin{tabular}{@{}lllrrrrrr@{}}
+\toprule
+Dataset & Pretrained & Task & Pretr. & Baseline & Gap & Seed SD & Beaten & $p_\text{Holm}$ \\
+\midrule
+ds003478 & EEGNetv4 & Eyes closed vs open & 0.771 & 0.810 & $-0.039$ & 0.037 & 30\,\% & 0.41 \\
+ds003478 & EEGNetv4 & BDI, eyes closed & 0.528 & 0.494 & $+0.033$ & 0.052 & 70\,\% & 0.41 \\
+ds003478 & EEGNetv4 & BDI, eyes open & 0.547 & 0.529 & $+0.018$ & 0.053 & 63\,\% & 0.92 \\
+ds003478 & ShallowFBCSPNet & Eyes closed vs open & 0.893 & 0.899 & $-0.006$ & 0.019 & 45\,\% & 0.92 \\
+ds003478 & ShallowFBCSPNet & BDI, eyes closed & 0.558 & 0.596 & $-0.037$ & 0.058 & 32\,\% & 0.92 \\
+ds003478 & ShallowFBCSPNet & BDI, eyes open & 0.543 & 0.601 & $-0.057$ & 0.060 & 25\,\% & 0.92 \\
+ds004504 & EEGNetv4 & AD vs control & 0.773 & 0.721 & $+0.052$ & 0.057 & 75\,\% & 0.042 \\
+ds004504 & EEGNetv4 & FTD vs control & 0.642 & 0.587 & $+0.055$ & 0.079 & 71\,\% & 0.051 \\
+ds002778 & EEGNetv4 & PD vs control & 0.589 & 0.574 & $+0.015$ & 0.062 & 54\,\% & 0.65 \\
+LEMON & EEGNetv4 & Young vs old, EC & 0.846 & 0.838 & $+0.007$ & 0.033 & 56\,\% & 1 \\
+LEMON & EEGNetv4 & Young vs old, EO & 0.877 & 0.873 & $+0.004$ & 0.028 & 51\,\% & 1 \\
+BNCI2014\_001 & EEGNetv4 & Left vs right MI & 0.793 & 0.773 & $+0.021$ & 0.015 & 74\,\% & 0.029 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Single-instance results are unstable}
+Variability across random initializations was as large as or larger than the effects of interest.
+For BDI with eyes closed, the untrained CNNs on all channels had seed SDs of 0.040--0.060 and
+split SDs of 0.030--0.033; single seeds of EEGNet ranged from 0.435 to 0.680 AUC. Scattering was
+the most stable extractor (SD 0.028 over its six scales). Foundation models, with one instance
+each, still varied across cross-validation splits (SD 0.026--0.052), and their variability across
+pretraining runs is unknown.
+
+\subsection{Small ensembles of untrained networks approach foundation models}
+Averaging the predictions of a few random instances raised the mean AUC and reduced its spread,
+with most of the gain reached by $K \approx 5$--10 (Fig.~\ref{fig:ensembles}). On FTD vs control,
+averaging the 30 untrained ShallowFBCSPNet seeds raised the AUC from 0.808 (mean single seed) to
+0.861 at $K = 5$, 0.875 at $K = 10$ and 0.880 at $K = 30$, against 0.911 for the best foundation
+model (CBraMod). On the nine tasks with foundation models, no foundation model was significantly
+better than the 30-seed ShallowFBCSPNet ensemble ($p_\text{Holm}$ from 0.16 to 1 where the
+foundation model scored higher); the 13 significant differences all favoured the ensemble. Against
+the scattering ensemble, only EEGPT on Parkinson's was significantly better ($p_\text{Holm} = 0.024$).
+With 52--65 participants on the dementia tasks, this means that the two cannot be told apart at
+these sample sizes, not that they are equivalent.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{fig2_ensembles}
+\caption{Mean AUC of ensembles of $K$ instances (averaged predictions) against $K$; band: SD over
+draws (up to 50 per $K$), which shrinks at large $K$ partly because draws from a finite pool
+overlap. Dashed line: best single foundation model, named in each panel.}
+\label{fig:ensembles}
+\end{figure}
+
+% \subsection{Participant-level stability}  optional: per-sample score SD and flip rate across
+% seeds are in results/phase2/<dataset>/summary.csv (median_score_sd, flip_rate).
+
+\section{Discussion}
+\todo{write. Points to cover: architecture vs pretrained weights (Table~\ref{tab:matched});
+foundation models vs ensembles and scattering; seed variability and how to report untrained
+baselines; near-chance clinical tasks (BDI, Parkinson's) and sample size; limitations: frozen
+features and a linear probe only, one fixed preprocessing per model, undocumented input scaling
+(BENDR, EEGPT), weak ShallowFBCSPNet checkpoints, no foundation model on Sleep-EDF, the
+ds002778 README's warning against patient-vs-control claims from this dataset alone.}
+
+\section*{Data and code availability}
+All datasets are openly available (Table~\ref{tab:tasks}). The code, configurations and the
+scripts that produce every number and figure are at
+\url{https://github.com/royjoysoy/untrained_eeg_fuzzy_pytorch} (MIT license).
+\todo{tag a release and cite its DOI.}
+
+\section*{Acknowledgements}
+\todo{Brainhack Montreal 2026; computations on Rorqual (Calcul Qu\'ebec, Digital Research
+Alliance of Canada).}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+\end{document}
