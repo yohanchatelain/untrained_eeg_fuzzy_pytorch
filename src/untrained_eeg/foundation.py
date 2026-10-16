@@ -9,7 +9,8 @@ see `VARIANT`), its channels (all the dataset's, or the 19 of the 10-20 system),
 length and its amplitude scale. Its features, averaged over time patches with channel and
 embedding axes kept, play the role of the CNN features.
 
-  eegpt          EEGPT, 250 Hz, all channels, millivolts (as in the authors' pretraining script)
+  eegpt          EEGPT, 256 Hz, all channels, millivolts (as in the authors' pretraining script;
+                 braindecode's model card says 250 Hz, the authors pretrain and evaluate at 256)
   labram         LaBraM, 200 Hz, all channels, microvolts / 100 (0.1 mV units)
   bendr          InterpolatedBENDR, 250 Hz, any montage projected onto BENDR's 19 + SCALE,
                  each channel min-max scaled to [-1, 1] (assumed from BENDR's pipeline)
@@ -38,7 +39,7 @@ TEN20 = ["Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8", "T7", "C3", "Cz", "C4", "T8
 ALIASES = {"T3": "T7", "T4": "T8", "T5": "P7", "T6": "P8"}  # old 10-20 names
 
 FOUNDATION = {  # key: class, repo, sfreq, channels, window_s (None = the dataset's), scale, how
-    "eegpt": ("EEGPT", "braindecode/eegpt-pretrained", 250, "all", None, "mv", "manual"),
+    "eegpt": ("EEGPT", "braindecode/eegpt-pretrained", 256, "all", None, "mv", "manual"),
     "labram": ("Labram", "braindecode/labram-pretrained", 200, "all", None, "0.1mv", "manual"),
     "bendr": ("InterpolatedBENDR", "braindecode/braindecode-bendr", 250, "all", None, "minmax", "manual"),
     "cbramod": ("CBraMod", "braindecode/cbramod-pretrained", 200, "all", None, "0.1mv", "hub"),
@@ -47,7 +48,7 @@ FOUNDATION = {  # key: class, repo, sfreq, channels, window_s (None = the datase
     "eegdino_medium": ("EEGDINO", "braindecode/eegdino-medium-pretrained", 200, "ten20", None, "0.1mv", "hub"),
     "signal_jepa": ("SignalJEPA", "braindecode/signal-jepa", 128, "lee2019", None, "uv", "hub"),
 }
-VARIANT = {200: "fm200", 250: "fm250", 128: "standard"}  # sampling rate -> preprocessing variant
+VARIANT = {200: "fm200", 250: "fm250", 256: "fm256", 128: "standard"}  # sampling rate -> preprocessing variant
 # Extracted but left out of the ensemble pools and of every test family, for a reason found on the
 # features themselves (not on the results); their AUCs are still reported (docs/pretrained_models.md)
 EXCLUDED = {"bendr": "near-constant features (median SD across blocks 0.0004, 0.2-0.9 for EEGPT and LaBraM)"}

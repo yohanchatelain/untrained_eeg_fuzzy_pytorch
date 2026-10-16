@@ -36,7 +36,7 @@ def load_config(path=REPO / "configs" / "ds003478.yaml"):
 
 
 # Variants every dataset has: the sampling rates (and window) foundation models expect.
-COMMON_VARIANTS = {"fm200": {"sfreq": 200}, "fm250": {"sfreq": 250},
+COMMON_VARIANTS = {"fm200": {"sfreq": 200}, "fm250": {"sfreq": 250}, "fm256": {"sfreq": 256},
                    "fm200_30s": {"sfreq": 200, "window_s": 30}}
 
 

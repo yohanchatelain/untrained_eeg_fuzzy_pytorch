@@ -90,12 +90,13 @@ parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.R
 parser.add_argument("--config", default=None)
 parser.add_argument("--extractors", nargs="+", choices=list(EXTRACTORS), default=list(EXTRACTORS))
 parser.add_argument("--seeds", type=seed_range, default=list(range(30)), help="untrained seeds, e.g. 0-29")
+parser.add_argument("--out", type=Path, default=None, help="features folder (default results/phase1/<dataset>/features)")
 args = parser.parse_args()
 
 torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", 1)))
 os.environ.setdefault("HF_HOME", str(HF_HOME))  # foundation-model weights, read offline
 cfg = load_config(args.config) if args.config else load_config()
-out_root = Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"] / "features"
+out_root = args.out or Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"] / "features"
 data = {}  # the current preprocessing variant -> (participants, {participant_id: (X, cond)})
 
 for name in sorted(args.extractors, key=lambda n: EXTRACTORS[n][1]):  # one variant at a time
