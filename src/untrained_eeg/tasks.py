@@ -37,6 +37,13 @@ def auc_score(y, prob):
     return roc_auc_score(y, prob)
 
 
+def subject_auc(y, prob, groups):
+    """Mean and SD over subjects of the per-subject AUC (within-subject tasks, where each subject
+    has its own probe: pooling their probabilities into one AUC mixes calibrations)."""
+    aucs = [roc_auc_score(y[groups == g], prob[groups == g]) for g in np.unique(groups)]
+    return np.mean(aucs), np.std(aucs, ddof=1)
+
+
 def predicted(prob):
     """Predicted classes: the most probable one, or P > 0.5 for two classes."""
     return prob.argmax(axis=1) if prob.ndim == 2 else (prob > 0.5).astype(int)

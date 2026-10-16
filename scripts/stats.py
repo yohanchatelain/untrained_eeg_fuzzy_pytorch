@@ -19,7 +19,12 @@ Holm correction within each family (test x dataset). Instance AUCs share the sam
 these tests ask whether weights (random, pretrained or wavelets) change the result beyond the
 weight-to-weight spread; they do not generalize over new participants.
 
-Writes results/stats/stats.csv.
+fm_vs_ensemble compares one FM instance with a 30-instance ensemble, which favours the ensemble
+by construction, so results/stats/fm_vs_seeds.csv also gives (no test) each FM's AUC against the
+single instances of the ShallowFBCSPNet and scattering: their mean, SD and the share it beats
+(ties count half), next to the ensemble's AUC.
+
+Writes results/stats/stats.csv and fm_vs_seeds.csv.
 
     python scripts/stats.py
 """
@@ -88,7 +93,7 @@ def ensemble_scores(g):
 
 
 rng = np.random.default_rng(0)
-rows = []
+rows, seed_rows = [], []
 for d in sorted((REPO / "results" / "phase1").iterdir()):
     if not (d / "metrics.csv").exists():
         continue
@@ -110,6 +115,12 @@ for d in sorted((REPO / "results" / "phase1").iterdir()):
                              auc_a=obs, auc_b=0.5, n_a=n, n_b=0, p=p))
         for fm in [e for e in FOUNDATION if e in ens]:
             for ref in ("shallow", "scattering"):
+                if ref in auc:  # descriptive: the FM against single instances, then the ensemble
+                    v = auc[ref]
+                    beaten = ((auc[fm][0] > v).sum() + 0.5 * (auc[fm][0] == v).sum()) / len(v)
+                    seed_rows.append(dict(dataset=ds, task=task, fm=fm, ref=ref, fm_auc=auc[fm][0],
+                                          ref_mean=v.mean(), ref_sd=v.std(ddof=1), ref_instances=len(v),
+                                          share_beaten=beaten, ref_ensemble_auc=auc_score(*ens[ref][1:3])))
                 if ref in ens:
                     ids, y, s_fm, _ = ens[fm]
                     s_ref = ens[ref][2][pd.Index(ens[ref][0]).get_indexer(ids)]
@@ -137,5 +148,6 @@ s["key"] = s.dataset + "|" + s.test + "|" + s.task + "|" + s.a + "|" + s.b
 out = REPO / "results" / "stats"
 out.mkdir(parents=True, exist_ok=True)
 s.to_csv(out / "stats.csv", index=False, float_format="%.6g")
+pd.DataFrame(seed_rows).to_csv(out / "fm_vs_seeds.csv", index=False, float_format="%.6g")
 print(s.groupby(["test", "dataset"]).significant.agg(["sum", "count"]).to_string())
 print(f"wrote {out / 'stats.csv'}")

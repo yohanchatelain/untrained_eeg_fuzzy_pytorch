@@ -13,8 +13,9 @@ predictions can be combined sample by sample.
 Reads results/phase1/<dataset>/ (features/ and predictions.csv.gz). Writes results/phase2/<dataset>/:
   draws.csv     pool, method, task, k, draw, instances, auc
   summary.csv   per pool x method x task x k: AUC mean and SD over draws, median per-sample
-                SD of the score over draws, flip rate (share of samples whose class differs
-                between draws)
+                SD of the score over draws, disagreement (chance that two random draws predict
+                different classes for a sample, averaged over samples; it does not depend on
+                the number of draws, which changes with K; undefined for a single draw)
   curves.png    AUC and spread against K
 
     python scripts/phase2_ensembles.py --workers 8                   # ds003478
@@ -73,6 +74,18 @@ def vote(probs):
     tie = share == 0.5
     share[tie] = np.where(probs[:, tie].mean(axis=0) > 0.5, 0.5 + 1e-9, 0.5)
     return share
+
+
+def disagreement(cls):
+    """Chance that two different draws predict different classes, averaged over samples.
+
+    cls: draws x samples predicted classes. With p_c the share of the n draws predicting class c,
+    the unbiased chance for a sample is (1 - sum_c p_c^2) * n / (n - 1); 2 p (1 - p) * n / (n - 1)
+    for two classes.
+    """
+    n = len(cls)
+    shares = np.stack([(cls == c).mean(axis=0) for c in np.unique(cls)])
+    return ((1 - (shares**2).sum(axis=0)) * n / (n - 1)).mean()
 
 
 def feature_ensemble(X, y, groups, task, cfg):
@@ -149,7 +162,7 @@ for pool, extractors in POOLS.items():
                 summary.append(dict(pool=pool, method=method, task=task, k=k, draws=len(draws),
                                     auc_mean=aucs.mean(), auc_sd=aucs.std(ddof=1) if many else np.nan,
                                     median_score_sd=np.median(scores.std(axis=0, ddof=1)) if many else np.nan,
-                                    flip_rate=(cls != cls[0]).any(axis=0).mean()))
+                                    disagreement=disagreement(cls) if many else np.nan))
         s = pd.DataFrame(summary)
         s = s[(s.pool == pool) & (s.task == task) & (s.method == "average")]
         print(f"{pool:20s} {task:10s} average: AUC K=1 {s.auc_mean.iloc[0]:.3f} -> "
