@@ -47,7 +47,9 @@ accept other channel sets through electrode names or positions).
 BENDR as a frozen extractor: its features are nearly constant across inputs (median SD across
 blocks 0.0004, against 0.2 to 0.9 for EEGPT and LaBraM), so every task is near chance. The cause
 is probably how braindecode's InterpolatedBENDR returns features or its undocumented input
-scaling (we use per-channel min-max); its results are left out of the conclusions.
+scaling (we use per-channel min-max). It is therefore left out of the ensemble pools and of every
+test family (`EXCLUDED` in `src/untrained_eeg/foundation.py`); its AUCs are still computed and
+reported, and it comes back in if a fix gives features with a normal spread.
 
 Input scale of EEGNetv4: the cards do not say. The first batch-norm's running variance gives
 the input SD seen in training: 3–35 for 10 checkpoints (microvolts, like our cache), but ~340

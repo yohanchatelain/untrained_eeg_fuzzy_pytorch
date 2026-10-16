@@ -37,16 +37,17 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config
-from untrained_eeg.foundation import FOUNDATION
+from untrained_eeg.foundation import EXCLUDED, FOUNDATION
 from untrained_eeg.tasks import MULTICLASS, auc_score, predicted, probe, task_data, task_labels, task_names
 
 UNTRAINED = ["cnn1d", "shallow", "eegnet", "eegnet_3ch", "shallow_bcic2a", "scattering"]
 PRETRAINED = ["eegnetv4", "shallow_pretrained"]
+FMS = [e for e in FOUNDATION if e not in EXCLUDED]  # BENDR's near-constant features are left out
 POOLS = {**{e: [e] for e in UNTRAINED + PRETRAINED},  # pool name: extractors in it
          "untrained_mix": ["cnn1d", "shallow", "eegnet"],  # different architectures, all channels
          "pretrained_mix": PRETRAINED,
-         "foundation_mix": list(FOUNDATION),  # one instance per foundation model
-         "all_pretrained_mix": PRETRAINED + list(FOUNDATION)}
+         "foundation_mix": FMS,  # one instance per foundation model
+         "all_pretrained_mix": PRETRAINED + FMS}
 
 
 def draws_of(n, k, n_draws, rng):

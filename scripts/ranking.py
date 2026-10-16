@@ -26,6 +26,7 @@ from scipy.stats import rankdata
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config
+from untrained_eeg.foundation import EXCLUDED
 
 STATS = ("median", "ensemble")
 
@@ -56,7 +57,7 @@ args = parser.parse_args()
 cfg = load_config(args.config) if args.config else load_config()
 ds = cfg["openneuro"]["id"]
 pred = pd.read_csv(Path(cfg["results_dir"]) / "phase1" / ds / "predictions.csv.gz")
-pred = pred[pred.cv_seed == cfg["cv_seed"]]
+pred = pred[(pred.cv_seed == cfg["cv_seed"]) & ~pred.extractor.isin(EXCLUDED)]  # no BENDR
 prob_cols = [c for c in pred.columns if c.startswith("prob")]  # prob, or prob_<k> per class
 rng = np.random.default_rng(0)
 rows = []

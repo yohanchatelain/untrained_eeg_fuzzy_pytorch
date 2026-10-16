@@ -48,6 +48,9 @@ FOUNDATION = {  # key: class, repo, sfreq, channels, window_s (None = the datase
     "signal_jepa": ("SignalJEPA", "braindecode/signal-jepa", 128, "lee2019", None, "uv", "hub"),
 }
 VARIANT = {200: "fm200", 250: "fm250", 128: "standard"}  # sampling rate -> preprocessing variant
+# Extracted but left out of the ensemble pools and of every test family, for a reason found on the
+# features themselves (not on the results); their AUCs are still reported (docs/pretrained_models.md)
+EXCLUDED = {"bendr": "near-constant features (median SD across blocks 0.0004, 0.2-0.9 for EEGPT and LaBraM)"}
 
 
 def variant_of(key):

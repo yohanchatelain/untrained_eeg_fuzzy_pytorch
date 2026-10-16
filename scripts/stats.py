@@ -14,6 +14,7 @@ For every dataset and task:
                  paired permutation test of the AUC difference (scores swapped per sample)
 Multi-class tasks (sleep staging) use the macro one-vs-rest AUC.
 
+Extractors in foundation.EXCLUDED (BENDR) are left out of every test.
 Holm correction within each family (test x dataset). Instance AUCs share the same samples, so
 these tests ask whether weights (random, pretrained or wavelets) change the result beyond the
 weight-to-weight spread; they do not generalize over new participants.
@@ -31,7 +32,7 @@ import pandas as pd
 from scipy.stats import mannwhitneyu
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import REPO
-from untrained_eeg.foundation import FOUNDATION
+from untrained_eeg.foundation import EXCLUDED, FOUNDATION
 from untrained_eeg.tasks import MULTICLASS, auc_score
 
 MATCHED = [("eegnetv4", "eegnet_3ch"), ("shallow_pretrained", "shallow_bcic2a")]
@@ -93,9 +94,9 @@ for d in sorted((REPO / "results" / "phase1").iterdir()):
         continue
     ds = d.name
     m = pd.read_csv(d / "metrics.csv")
-    m = m[m.cv_seed == m.cv_seed.min()]  # the fixed split of the config
+    m = m[(m.cv_seed == m.cv_seed.min()) & ~m.extractor.isin(EXCLUDED)]  # the fixed split; no BENDR
     preds = pd.read_csv(d / "predictions.csv.gz")
-    preds = preds[preds.cv_seed == preds.cv_seed.min()]
+    preds = preds[(preds.cv_seed == preds.cv_seed.min()) & ~preds.extractor.isin(EXCLUDED)]
     for task, mt in m.groupby("task"):
         auc = {e: g.auc.to_numpy() for e, g in mt.groupby("extractor")}
         pt = preds[preds.task == task]

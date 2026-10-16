@@ -28,7 +28,9 @@ Two modes:
               extractors, with more power when their results are correlated.
 
 Correction: p_holm (Holm) and, with --maxt, p_maxt, each per task and statistic;
-significant = p_maxt < 0.05 with --maxt, else p_holm < 0.05.
+significant = p_maxt < 0.05 with --maxt, else p_holm < 0.05. Extractors in foundation.EXCLUDED
+(BENDR) are not tested. --correct-only recomputes the correction of an existing output file
+without them (with --maxt, from the saved nulls), without running any permutation.
 
 Writes results/stats/permutation_<dataset>.csv (default), permutation_ensemble_<dataset>.csv or
 permutation_maxt_<dataset>.csv (one row per extractor, task and statistic); the ensemble modes
@@ -50,6 +52,7 @@ from joblib import Parallel, delayed
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config
+from untrained_eeg.foundation import EXCLUDED
 from untrained_eeg.tasks import MULTICLASS, WITHIN_SUBJECT, auc_score, probe, task_data, task_labels, task_names
 
 STOP_AFTER = 20  # ensemble mode: null values >= observed before a statistic stops counting
@@ -118,6 +121,7 @@ parser.add_argument("--config", default=None)
 parser.add_argument("--permutations", type=int, default=None, help="default: config n_permutations, else 1000")
 parser.add_argument("--ensemble", action="store_true", help="test all instances: ensemble, median, best (see above)")
 parser.add_argument("--maxt", action="store_true", help="with --ensemble: no early stop, max-T correction (see above)")
+parser.add_argument("--correct-only", action="store_true", help="recompute the correction of the existing output")
 parser.add_argument("--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK", 1)))
 args = parser.parse_args()
 if args.maxt and not args.ensemble:
@@ -136,11 +140,15 @@ if args.maxt:
 labels = task_labels(cfg)
 rows = []
 partial = dest.with_suffix(".partial.csv")  # ensemble mode: tests finished so far
-if args.ensemble and partial.exists():
+if args.correct_only:  # the finished tests, corrected again below
+    rows = pd.read_csv(dest).drop(columns=["p_holm", "p_maxt", "significant"], errors="ignore").to_dict("records")
+elif args.ensemble and partial.exists():
     rows = pd.read_csv(partial).to_dict("records")
+rows = [r for r in rows if r["extractor"] not in EXCLUDED]
 done = {(r["extractor"], r["task"]) for r in rows}
+ext_dirs = [] if args.correct_only else sorted(p for p in src.iterdir() if p.is_dir() and p.name not in EXCLUDED)
 
-for ext_dir in sorted(p for p in src.iterdir() if p.is_dir()):
+for ext_dir in ext_dirs:
     paths = sorted(ext_dir.glob("*.npz"))
     if not args.ensemble:
         paths = paths[:1]  # the first instance, as in phase1_probe's CV-split runs
@@ -196,7 +204,8 @@ if args.maxt:  # joint nulls of the task's extractors: the same shuffled labels 
         out.loc[g.index, "p_maxt"] = maxt(null, g.auc.to_numpy())
 out["significant"] = (out.p_maxt if args.maxt else out.p_holm) < 0.05
 out.to_csv(dest, index=False, float_format="%.6g")
-partial.unlink(missing_ok=True)
+if not args.correct_only:
+    partial.unlink(missing_ok=True)
 method = "max-T" if args.maxt else "Holm"
 for key, g in out.groupby("statistic" if args.ensemble else "dataset"):
     print(f"wrote {dest}: {key}: {g.significant.sum()} of {len(g)} significant after {method} (per task)")
