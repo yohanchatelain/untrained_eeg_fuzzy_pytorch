@@ -186,9 +186,11 @@ its initial running statistics).
 EEGNetv4 checkpoints, each trained on one MOABB motor-imagery dataset, take C3, Cz and C4 at
 128~Hz; two further checkpoints trained on another input scale (Cho2017, Ofner2017) were
 excluded, and on motor imagery the checkpoint trained on BNCI2014\_001 was left out, leaving
-nine. Their training band-pass is not published; they received our 1--40~Hz data. Two
+nine. Their training band-pass is not published; they received our 1--40~Hz data. The checkpoints
+differ in their pretraining data, not only in their random seed. Two
 ShallowFBCSPNet checkpoints (braindecode tutorial models, both trained on subject 3 of
-BNCI2014\_001) take the 22-channel BCI~IV~2a input; they were run on ds003478 only (not on BNCI2014\_001, their training data).
+BNCI2014\_001) take the 22-channel BCI~IV~2a input; they were run on ds003478 only (not on BNCI2014\_001, their training data). The two differ in
+their training recipe (trial-wise or cropped decoding).
 
 \paragraph{Wavelet scattering.} As a fixed reference that is neither learned nor random, we
 computed the 1D wavelet scattering transform \citep{mallat2012, anden2014} of each channel with
@@ -227,17 +229,25 @@ and the AUC was computed over all subjects' trials. We report the ROC AUC of the
 predictions (macro one-vs-rest AUC for sleep staging) and the balanced accuracy.
 
 \subsection{Sources of variability}
-For each extractor we measured (i) instance variability, the SD of AUC across instances
-(30 seeds, 10 or 2 checkpoints, or 6 scattering scales; undefined for single-instance foundation
-models), and (ii) split variability, the SD of AUC of one instance over 30 cross-validation fold
-assignments (10 for sleep staging).
+For each extractor we measured (i) instance variability, the SD of AUC across instances, and
+(ii) split variability, the SD of AUC of one instance over 30 cross-validation fold assignments
+(10 for sleep staging). An instance is not the same object for every kind of extractor, so
+instance variability measures different sources: initialization alone for untrained networks
+(30 seeds); pretraining dataset and training run for the EEGNetv4 checkpoints (10); training
+recipe for the ShallowFBCSPNet checkpoints (2); and the choice of a hyperparameter for scattering
+(6 scales $J$). It is not measured for foundation models, which have one public checkpoint each;
+their variability across pretraining runs is unknown, not zero. Instance spreads are therefore
+compared across kinds only with this difference in mind (Section~\ref{sec:matched}).
 
-\subsection{Pretrained vs matched untrained networks}
+\subsection{Pretrained vs matched untrained networks}\label{sec:matched}
 Each pretrained CNN was compared with its untrained twin (same architecture, channels and
 preprocessing; only the weights differ). We report the gap (mean pretrained AUC minus mean
 untrained AUC) and the share of untrained seeds that a checkpoint beats, averaged over
 checkpoints (the normalized Mann--Whitney $U$; 50\,\% means no better than a random
-initialization).
+initialization). The checkpoints' spread includes differences in pretraining data, so it is
+expected to exceed what repeated pretraining on one dataset would give; the comparison asks whether
+a checkpoint can be told apart from a random initialization, not whether the two spreads are
+equal.
 
 \subsection{Ensembles of instances}
 For each pool of instances and ensemble size $K$ we drew up to 50 random subsets of $K$ instances
@@ -295,8 +305,9 @@ with eye closure, and near-chance results elsewhere are not due to a pipeline fa
 \begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{fig1_phase1}
-\caption{AUC of every instance (small dots: seeds, checkpoints or scattering scales) of every
-extractor on the ten tasks. Large marker: median instance, filled when it beats chance (median
+\caption{AUC of every instance of every extractor on the ten tasks. Small dots: random seeds
+(untrained CNNs), published checkpoints (pretrained CNNs) or scales $J$ (scattering); foundation
+models have one checkpoint each. Large marker: median instance, filled when it beats chance (median
 instance refit permutation, Holm-corrected; on sleep staging, where it was not run, the first
 instance). Dashed line: chance. Empty rows: extractor not run on that dataset.}
 \label{fig:phase1}
@@ -459,8 +470,11 @@ accounts for the probe having been fitted on the true labels \citep{ojala2010}, 
 statistic was the median instance ($p_\text{Holm} = 0.16$), the ensemble (0.32) or the best instance
 (0.60). We suggest reporting untrained baselines as a distribution over seeds or as an ensemble, and
 testing them with a refit permutation over all instances. The same reasoning applies to pretrained
-models, for which we measured only split variability: a foundation model is one draw from a
-pretraining run, and its variability across pretraining seeds is unknown.
+models, whose variability we could measure only partly. The EEGNetv4 checkpoints vary in their
+pretraining data as well as their seed, so their spread mixes two sources; each foundation model is
+one draw from a pretraining run, and its variability across pretraining seeds is unknown. A single
+foundation-model AUC is therefore subject to the same caution as a single-seed baseline, without a
+way to quantify it from public checkpoints.
 
 \paragraph{Clinical tasks near chance.} No extractor detected high vs low BDI, and on Parkinson's
 only EEGPT exceeded chance under the primary test. These are the smallest samples in the study. For
