@@ -102,7 +102,9 @@ was trained on (`exclude` in the configs, leakage table in `docs/pretrained_mode
   55-60 to 75-80; 65). The one participant in the 35–40 bin is left out. Label 1 = old.
 - **Recording used:** the authors' preprocessed EEG
   (`EEG_Preprocessed_BIDS_ID/EEG_Preprocessed`), one EEGLAB file per condition (eyes closed, eyes
-  open), 250 Hz, about 8 minutes each, 59–61 channels after the authors removed bad channels.
+  open), 250 Hz, about 8 minutes each, 56–61 channels after the authors removed bad channels.
+  Two participants (sub-032483, sub-032484) were preprocessed at 100 Hz instead; like everyone
+  they are resampled to 128 Hz, so their signal has nothing above 50 Hz.
   Each file joins the condition's blocks, marked by `boundary` events. The raw recordings
   (68 GB, BrainVision) are not used.
 - **Our preprocessing:** missing channels are rebuilt by spherical-spline interpolation so that
