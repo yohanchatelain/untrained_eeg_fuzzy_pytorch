@@ -9,7 +9,7 @@ see `VARIANT`), its channels (all the dataset's, or the 19 of the 10-20 system),
 length and its amplitude scale. Its features, averaged over time patches with channel and
 embedding axes kept, play the role of the CNN features.
 
-  eegpt          EEGPT, 250 Hz, all channels, millivolts (assumed: units not documented)
+  eegpt          EEGPT, 250 Hz, all channels, millivolts (as in the authors' pretraining script)
   labram         LaBraM, 200 Hz, all channels, microvolts / 100 (0.1 mV units)
   bendr          InterpolatedBENDR, 250 Hz, any montage projected onto BENDR's 19 + SCALE,
                  each channel min-max scaled to [-1, 1] (assumed from BENDR's pipeline)
