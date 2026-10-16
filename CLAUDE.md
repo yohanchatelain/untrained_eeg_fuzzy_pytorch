@@ -51,8 +51,8 @@ The repo is public and used by Brainhack beginners: keep it clean, short, and we
 ## Open items (ask Roy, don't assume)
 - Foundation models run through braindecode, not plain-PyTorch copies (the settled rule above was
   for the Fuzzy container, now paused): confirm, or port them when Fuzzy resumes.
-- EEGPT's input units (we assume millivolts) and BENDR's input scaling (we assume per-channel min-max
-  to [-1, 1]) are not documented: verify with the authors' code.
+- BENDR's input scaling (we assume per-channel min-max to [-1, 1]) is not documented: verify with
+  the authors' code. (EEGPT's millivolts are confirmed by the authors' pretraining script.)
 - MIRepNet and BrainOmni need braindecode's development version; ST-EEGFormer, BIOT, ZUNA, DIVER-1,
   NeuroRVQ, SleepFM: pretraining corpora still to check (`docs/pretrained_models.md`).
 - ds002778: its README asks authors to email the dataset curators before submitting a manuscript.
