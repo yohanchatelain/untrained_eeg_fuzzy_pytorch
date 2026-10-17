@@ -15,7 +15,10 @@ For every dataset and task:
 Multi-class tasks (sleep staging) use the macro one-vs-rest AUC.
 
 Extractors in foundation.EXCLUDED (BENDR) are left out of every test.
-Holm correction within each family (test x dataset). Instance AUCs share the same samples, so
+Correction within each family (test x task): max-T (Westfall-Young step-down min-P, p_maxt) for
+the permutation tests, whose permutations are shared by every test of the family (the same
+shuffled labels for above_chance, the same swaps for fm_vs_ensemble); the Mann-Whitney tests have
+no joint permutation null, so they keep Holm (p_holm, also given for every test). Instance AUCs share the same samples, so
 these tests ask whether weights (random, pretrained or wavelets) change the result beyond the
 weight-to-weight spread; they do not generalize over new participants.
 
@@ -38,49 +41,47 @@ from scipy.stats import mannwhitneyu
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import REPO
 from untrained_eeg.foundation import EXCLUDED, FOUNDATION
+from untrained_eeg.multitest import holm, maxt
 from untrained_eeg.tasks import MULTICLASS, auc_score
 
 MATCHED = [("eegnetv4", "eegnet_3ch"), ("shallow_pretrained", "shallow_bcic2a")]
-N_PERM = 10_000
+N_PERM = 10_000  # above_chance
+N_PAIRED = 2000  # fm_vs_ensemble
 
 
-def holm(p):
-    """Holm-adjusted p-values."""
-    p = np.asarray(p, float)
-    order = np.argsort(p)
-    adj = np.empty_like(p)
-    running = 0.0
-    for rank, i in enumerate(order):
-        running = max(running, (len(p) - rank) * p[i])
-        adj[i] = min(1.0, running)
-    return adj
-
-
-def permutation_p(y, score, groups, rng):
-    """One-sided p-value of AUC(y, score) under label permutations (within groups if given)."""
-    obs = auc_score(y, score)
-    count = 0
+def label_nulls(y, scores, groups, rng):
+    """AUC of each score vector and its nulls under the SAME label permutations (within groups if
+    given): (observed (m,), null (N_PERM x m)), the joint nulls max-T needs."""
+    obs = np.array([auc_score(y, s) for s in scores])
     idx = [np.flatnonzero(groups == g) for g in np.unique(groups)] if groups is not None else None
-    for _ in range(N_PERM):
+    null = np.empty((N_PERM, len(scores)))
+    for k in range(N_PERM):
         if idx is None:
             yp = rng.permutation(y)
         else:
             yp = y.copy()
             for i in idx:
                 yp[i] = rng.permutation(y[i])
-        count += auc_score(yp, score) >= obs
-    return obs, (count + 1) / (N_PERM + 1)
+        null[k] = [auc_score(yp, s) for s in scores]
+    return obs, null
 
 
-def paired_p(y, a, b, rng, n_perm=2000):
-    """Two-sided p-value of AUC(a) - AUC(b), swapping a and b per sample at random."""
-    obs = auc_score(y, a) - auc_score(y, b)
-    count = 0
-    for _ in range(n_perm):
+def paired_nulls(y, pairs, rng):
+    """|AUC(a) - AUC(b)| for each pair (a, b) of score vectors and its nulls, swapping a and b per
+    sample with the SAME random swaps for every pair: (observed (m,), null (N_PAIRED x m))."""
+    obs = np.array([abs(auc_score(y, a) - auc_score(y, b)) for a, b in pairs])
+    null = np.empty((N_PAIRED, len(pairs)))
+    for k in range(N_PAIRED):
         swap = rng.random(len(y)) < 0.5
-        sw = swap[:, None] if a.ndim == 2 else swap
-        count += abs(auc_score(y, np.where(sw, b, a)) - auc_score(y, np.where(sw, a, b))) >= abs(obs)
-    return obs, (count + 1) / (n_perm + 1)
+        for j, (a, b) in enumerate(pairs):
+            sw = swap[:, None] if a.ndim == 2 else swap
+            null[k, j] = abs(auc_score(y, np.where(sw, b, a)) - auc_score(y, np.where(sw, a, b)))
+    return obs, null
+
+
+def raw_p(obs, null):
+    """Permutation p-value of each column: (1 + #null >= observed) / (1 + n)."""
+    return (1 + (null >= obs).sum(axis=0)) / (1 + len(null))
 
 
 def ensemble_scores(g):
@@ -105,14 +106,23 @@ for d in sorted((REPO / "results" / "phase1").iterdir()):
     for task, mt in m.groupby("task"):
         auc = {e: g.auc.to_numpy() for e, g in mt.groupby("extractor")}
         pt = preds[preds.task == task]
-        ens = {}
-        for e, g in pt.groupby("extractor"):  # ensemble of all instances vs chance
-            ids, y, s, n = ens[e] = ensemble_scores(g)
-            clustered = task in ("ec_eo", "mi_left_right") or task in MULTICLASS  # several samples per person
-            groups = np.array([i.split("/")[0] for i in ids]) if clustered else None
-            obs, p = permutation_p(y, s, groups, rng)
+        ens = {e: ensemble_scores(g) for e, g in pt.groupby("extractor")}  # all instances averaged
+        ids, y = next(iter(ens.values()))[:2]
+        assert all(list(v[0]) == list(ids) for v in ens.values()), "extractors must share the samples"
+        # ensemble of all instances vs chance, every extractor on the same label permutations
+        clustered = task in ("ec_eo", "mi_left_right") or task in MULTICLASS  # several samples per person
+        groups = np.array([i.split("/")[0] for i in ids]) if clustered else None
+        obs, null = label_nulls(y, [v[2] for v in ens.values()], groups, rng)
+        for (e, (_, _, _, n)), o, p, pm in zip(ens.items(), obs, raw_p(obs, null), maxt(null, obs)):
             rows.append(dict(test="above_chance", dataset=ds, task=task, a=e, b="chance",
-                             auc_a=obs, auc_b=0.5, n_a=n, n_b=0, p=p))
+                             auc_a=o, auc_b=0.5, n_a=n, n_b=0, p=p, p_maxt=pm))
+        pairs = [(fm, ref) for fm in FOUNDATION if fm in ens for ref in ("shallow", "scattering") if ref in ens]
+        if pairs:  # each FM vs the ensembles, every pair on the same random swaps
+            obs, null = paired_nulls(y, [(ens[a][2], ens[b][2]) for a, b in pairs], rng)
+            for (a, b), p, pm in zip(pairs, raw_p(obs, null), maxt(null, obs)):
+                rows.append(dict(test="fm_vs_ensemble", dataset=ds, task=task, a=a, b=b,
+                                 auc_a=auc_score(y, ens[a][2]), auc_b=auc_score(y, ens[b][2]),
+                                 n_a=1, n_b=ens[b][3], p=p, p_maxt=pm))
         for fm in [e for e in FOUNDATION if e in ens]:
             for ref in ("shallow", "scattering"):
                 if ref in auc:  # descriptive: the FM against single instances, then the ensemble
@@ -121,12 +131,6 @@ for d in sorted((REPO / "results" / "phase1").iterdir()):
                     seed_rows.append(dict(dataset=ds, task=task, fm=fm, ref=ref, fm_auc=auc[fm][0],
                                           ref_mean=v.mean(), ref_sd=v.std(ddof=1), ref_instances=len(v),
                                           share_beaten=beaten, ref_ensemble_auc=auc_score(*ens[ref][1:3])))
-                if ref in ens:
-                    ids, y, s_fm, _ = ens[fm]
-                    s_ref = ens[ref][2][pd.Index(ens[ref][0]).get_indexer(ids)]
-                    diff, p = paired_p(y, s_fm, s_ref, rng)
-                    rows.append(dict(test="fm_vs_ensemble", dataset=ds, task=task, a=fm, b=ref,
-                                     auc_a=auc_score(y, s_fm), auc_b=auc_score(y, s_ref), n_a=1, n_b=ens[ref][3], p=p))
         for pre, unt in MATCHED:
             if pre in auc and unt in auc:
                 p = mannwhitneyu(auc[pre], auc[unt], alternative="two-sided").pvalue
@@ -142,8 +146,9 @@ for d in sorted((REPO / "results" / "phase1").iterdir()):
     print(f"{ds}: {sum(r['dataset'] == ds for r in rows)} tests", flush=True)
 
 s = pd.DataFrame(rows)
-s["p_holm"] = s.groupby(["test", "dataset"]).p.transform(holm)
-s["significant"] = s.p_holm < 0.05
+s["p_holm"] = s.groupby(["test", "dataset", "task"]).p.transform(holm)  # per task
+# max-T where the test has joint permutation nulls; Holm for the Mann-Whitney tests
+s["significant"] = s.p_maxt.fillna(s.p_holm) < 0.05
 s["key"] = s.dataset + "|" + s.test + "|" + s.task + "|" + s.a + "|" + s.b
 out = REPO / "results" / "stats"
 out.mkdir(parents=True, exist_ok=True)

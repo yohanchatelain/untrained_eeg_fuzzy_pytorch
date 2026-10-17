@@ -20,8 +20,9 @@ Two modes:
               Each statistic stops counting once 20 null values reach the observed one
               (Besag and Clifford 1991: p = 20 / n); permutations stop when all three have,
               so only tests that may be significant run all --permutations.
-  --maxt      with --ensemble: no early stop, every extractor runs all --permutations, and
-              the null values are kept (results/stats/nulls_<dataset>/). Every extractor sees
+  --maxt      no early stop, every extractor runs all --permutations, and the null values
+              are kept (results/stats/nulls_<dataset>/, nulls_first_<dataset>/ for the first
+              instance; output permutation_first_maxt_<dataset>.csv). Every extractor sees
               the same shuffled labels at permutation i, so the nulls are joint and the
               Westfall-Young step-down min-P correction (column p_maxt) can use the correlation
               between extractors. Like Holm it controls the familywise error over a task's
@@ -53,42 +54,11 @@ from joblib import Parallel, delayed
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config
 from untrained_eeg.foundation import EXCLUDED
+from untrained_eeg.multitest import holm, maxt
 from untrained_eeg.tasks import MULTICLASS, WITHIN_SUBJECT, auc_score, probe, task_data, task_labels, task_names
 
 STOP_AFTER = 20  # ensemble mode: null values >= observed before a statistic stops counting
 STATS = ("ensemble", "median", "best")  # ensemble mode: statistics of the instances' probes
-
-
-def holm(p):
-    """Holm-adjusted p-values."""
-    p = np.asarray(p, float)
-    adj, running = np.empty_like(p), 0.0
-    for rank, i in enumerate(np.argsort(p)):
-        running = max(running, (len(p) - rank) * p[i])
-        adj[i] = min(1.0, running)
-    return adj
-
-
-def maxt(null, observed):
-    """Westfall-Young step-down min-P adjusted p-values (Westfall and Young 1993, algorithm 2.8).
-
-    null: (n permutations x m tests) null statistics, computed on the same shuffled labels for
-    every test; observed: (m,). A larger statistic is stronger evidence. The observed labels
-    count as one of the n + 1 permutations, so raw p = (1 + #null >= observed) / (1 + n).
-    """
-    t = np.vstack([observed, null])  # row 0: the observed labels
-    n1, m = t.shape
-    # every row as p-values, each within its own test's column: share of rows >= it
-    srt = np.sort(t, axis=0)
-    p = np.column_stack([(n1 - np.searchsorted(srt[:, j], t[:, j], "left")) / n1 for j in range(m)])
-    raw = p[0]
-    order = np.argsort(raw, kind="stable")
-    # successive minima from the least significant test up: q[:, r] = min over tests order[r:]
-    q = np.minimum.accumulate(p[:, order[::-1]], axis=1)[:, ::-1]
-    adj = (q <= raw[order]).sum(axis=0) / n1
-    out = np.empty(m)
-    out[order] = np.minimum(np.maximum.accumulate(adj), 1.0)  # monotone in the order of raw p
-    return out
 
 
 def shuffled(y, groups, rng):
@@ -120,29 +90,28 @@ parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.R
 parser.add_argument("--config", default=None)
 parser.add_argument("--permutations", type=int, default=None, help="default: config n_permutations, else 1000")
 parser.add_argument("--ensemble", action="store_true", help="test all instances: ensemble, median, best (see above)")
-parser.add_argument("--maxt", action="store_true", help="with --ensemble: no early stop, max-T correction (see above)")
+parser.add_argument("--maxt", action="store_true", help="no early stop, max-T correction (see above)")
 parser.add_argument("--correct-only", action="store_true", help="recompute the correction of the existing output")
 parser.add_argument("--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK", 1)))
 args = parser.parse_args()
-if args.maxt and not args.ensemble:
-    parser.error("--maxt needs --ensemble")
 
 cfg = load_config(args.config) if args.config else load_config()
 n_perm = args.permutations or cfg.get("n_permutations", 1000)
 ds = cfg["openneuro"]["id"]
 src = Path(cfg["results_dir"]) / "phase1" / ds / "features"
-mode = "maxt_" if args.maxt else "ensemble_" if args.ensemble else ""
-dest = Path(cfg["results_dir"]) / "stats" / f"permutation_{mode}{ds}.csv"
+mode = {(True, True): "maxt_", (True, False): "ensemble_", (False, True): "first_maxt_", (False, False): ""}
+dest = Path(cfg["results_dir"]) / "stats" / f"permutation_{mode[args.ensemble, args.maxt]}{ds}.csv"
 dest.parent.mkdir(parents=True, exist_ok=True)
-nulls = dest.parent / f"nulls_{ds}"  # --maxt: one (permutations x statistics) array per test
+# --maxt: one (permutations x statistics) array per test
+nulls = dest.parent / (f"nulls_{ds}" if args.ensemble else f"nulls_first_{ds}")
 if args.maxt:
     nulls.mkdir(exist_ok=True)
 labels = task_labels(cfg)
 rows = []
-partial = dest.with_suffix(".partial.csv")  # ensemble mode: tests finished so far
+partial = dest.with_suffix(".partial.csv")  # tests finished so far
 if args.correct_only:  # the finished tests, corrected again below
     rows = pd.read_csv(dest).drop(columns=["p_holm", "p_maxt", "significant"], errors="ignore").to_dict("records")
-elif args.ensemble and partial.exists():
+elif partial.exists():
     rows = pd.read_csv(partial).to_dict("records")
 rows = [r for r in rows if r["extractor"] not in EXCLUDED]
 done = {(r["extractor"], r["task"]) for r in rows}
@@ -164,11 +133,14 @@ for ext_dir in ext_dirs:
             null = np.array(Parallel(n_jobs=args.workers)(
                 delayed(null_stats)(Xs, y, groups, task, cfg, [seed]) for seed in range(n_perm)))[:, 0, 0]
             p = (1 + (null >= observed[0]).sum()) / (1 + n_perm)
-            rows.append(dict(dataset=ds, task=task, extractor=ext_dir.name, instance=paths[0].stem,
-                             auc=observed[0], null_mean=null.mean(), null_p95=np.quantile(null, 0.95),
-                             n_permutations=n_perm, p=p))
+            if args.maxt:
+                np.save(nulls / f"{ext_dir.name}__{task}.npy", null[:, None])
+            rows.append(dict(dataset=ds, task=task, extractor=ext_dir.name, statistic="first",
+                             instance=paths[0].stem, auc=observed[0], null_mean=null.mean(),
+                             null_p95=np.quantile(null, 0.95), n_permutations=n_perm, p=p))
             print(f"{ext_dir.name:18s} {task:15s} AUC {observed[0]:.3f}  null {null.mean():.3f} "
                   f"(95% {np.quantile(null, 0.95):.3f})  p {p:.4f}", flush=True)
+            pd.DataFrame(rows).to_csv(partial, index=False, float_format="%.6g")
             continue
         # Ensemble mode: rounds of one chunk of permutations per worker, until done or (without
         # --maxt) every statistic has STOP_AFTER null values >= its observed value.
@@ -196,16 +168,19 @@ for ext_dir in ext_dirs:
         pd.DataFrame(rows).to_csv(partial, index=False, float_format="%.6g")
 
 out = pd.DataFrame(rows)
-families = ["statistic", "task"] if args.ensemble else ["task"]  # corrected per task (and statistic)
+if "statistic" not in out:  # first-instance outputs written before the column existed
+    out["statistic"] = "first"
+families = ["statistic", "task"]  # corrected per task and statistic
 out["p_holm"] = out.groupby(families).p.transform(holm)
 if args.maxt:  # joint nulls of the task's extractors: the same shuffled labels at each permutation
     for (stat, task), g in out.groupby(families):
-        null = np.column_stack([np.load(nulls / f"{e}__{task}.npy")[:, STATS.index(stat)] for e in g.extractor])
+        col = 0 if stat == "first" else STATS.index(stat)
+        null = np.column_stack([np.load(nulls / f"{e}__{task}.npy")[:, col] for e in g.extractor])
         out.loc[g.index, "p_maxt"] = maxt(null, g.auc.to_numpy())
 out["significant"] = (out.p_maxt if args.maxt else out.p_holm) < 0.05
 out.to_csv(dest, index=False, float_format="%.6g")
 if not args.correct_only:
     partial.unlink(missing_ok=True)
 method = "max-T" if args.maxt else "Holm"
-for key, g in out.groupby("statistic" if args.ensemble else "dataset"):
+for key, g in out.groupby("statistic"):
     print(f"wrote {dest}: {key}: {g.significant.sum()} of {len(g)} significant after {method} (per task)")
