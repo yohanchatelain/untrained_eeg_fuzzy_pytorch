@@ -2,7 +2,7 @@
 
   fig1_phase1.pdf      AUC of every instance on every task (dots), one row per extractor
                        grouped by kind; the large marker is the median instance, filled when
-                       it beats chance (median-instance permutation test, Holm-corrected;
+                       it beats chance (median-instance permutation test, max-T per task;
                        first instance on Sleep-EDF, where the all-instance test was not run)
   fig2_ensembles.pdf   mean AUC of ensembles of K instances (averaged predictions) against K,
                        band = SD over draws, for the untrained ShallowFBCSPNet, scattering and
@@ -11,7 +11,7 @@
 Colours: one per kind of extractor (untrained CNN, scattering, pretrained CNN, foundation
 model), the same in both figures; every extractor is also named on the axis.
 Reads results/phase1/<dataset>/metrics.csv, results/phase2/<dataset>/summary.csv and
-results/stats/permutation[_ensemble]_<dataset>.csv. Writes PDF and PNG to paper/figures/.
+results/stats/permutation_[first_]maxt_<dataset>.csv. Writes PDF and PNG to paper/figures/.
 
     python scripts/paper_figures.py
 """
@@ -52,7 +52,7 @@ EXTRACTORS = {  # extractor: axis label, top to bottom within each kind
     "eegnet_3ch": "EEGNet, 3 ch", "shallow_bcic2a": "Shallow, 2a input",
     "scattering": "Scattering (J 3-8)",
     "eegnetv4": "EEGNetv4 (pretr.)", "shallow_pretrained": "Shallow (pretr.)",
-    "eegpt": "EEGPT", "labram": "LaBraM", "bendr": "BENDR", "cbramod": "CBraMod",
+    "eegpt": "EEGPT", "labram": "LaBraM", "cbramod": "CBraMod",  # BENDR: left out of the analyses
     "codebrain": "CodeBrain", "eegdino_small": "EEG-DINO S", "eegdino_medium": "EEG-DINO M",
     "signal_jepa": "Signal-JEPA",
 }
@@ -69,14 +69,15 @@ def phase1(ds):
 
 
 def significant(ds):
-    """(extractor, task) -> beats chance: median-instance test, else first instance."""
+    """(extractor, task) -> beats chance: median-instance test (max-T per task), else the first
+    instance (Sleep-EDF, where the all-instance test was not run)."""
     stats = REPO / "results" / "stats"
-    f = stats / f"permutation_ensemble_{ds}.csv"
+    f = stats / f"permutation_maxt_{ds}.csv"
     if f.exists():
         s = pd.read_csv(f)
         s = s[s.statistic == "median"]
     else:
-        s = pd.read_csv(stats / f"permutation_{ds}.csv")
+        s = pd.read_csv(stats / f"permutation_first_maxt_{ds}.csv")
     return {(r.extractor, r.task): bool(r.significant) for r in s.itertuples()}
 
 
@@ -136,7 +137,7 @@ def fig2(out):
                             color=c, alpha=0.15, linewidth=0)
             ax.plot(g.k, g.auc_mean, color=c, lw=1.5)
         m = phase1(ds)
-        fm = m[(m.task == task) & (m.group == "foundation")]
+        fm = m[(m.task == task) & (m.group == "foundation") & m.extractor.isin(EXTRACTORS)]
         if len(fm):
             best = fm.loc[fm.auc.idxmax()]
             ax.axhline(best.auc, color=KINDS["foundation"][1], lw=1.2, ls=(0, (4, 2)))
