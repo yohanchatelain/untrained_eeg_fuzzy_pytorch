@@ -1,7 +1,7 @@
 """Rank the extractors of each task, with the uncertainty of the ranking (bootstrap).
 
-Each extractor is scored by its median-instance AUC and by its ensemble AUC (averaged
-predictions of all its instances). A resample draws participants with replacement (all samples
+Each extractor is scored by its median-instance AUC, its mean AUC over instances and its
+ensemble AUC (averaged predictions of all its instances). A resample draws participants with replacement (all samples
 of a participant together: blocks, trials or sleep epochs) and, for extractors with several
 instances, instances with replacement, then ranks the extractors (1 = best, ties share the
 mean rank). For each extractor: the rank on the data, its 95% interval over resamples and the
@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from untrained_eeg.data import load_config
 from untrained_eeg.foundation import EXCLUDED
 
-STATS = ("median", "ensemble")
+STATS = ("median", "mean", "ensemble")
 
 
 def auc(y, p):
@@ -42,11 +42,13 @@ def auc(y, p):
 
 
 def scores(P, y, idx, inst):
-    """Median-instance and ensemble AUC of each extractor on samples idx and instances inst."""
-    out = np.empty((len(P), 2))
+    """Median-instance, mean-instance and ensemble AUC of each extractor (columns in STATS order)
+    on samples idx and instances inst."""
+    out = np.empty((len(P), len(STATS)))
     for j, (probs, i) in enumerate(zip(P, inst)):
         yb, sub = y[idx], probs[i][:, idx]
-        out[j] = np.median([auc(yb, p) for p in sub]), auc(yb, sub.mean(axis=0))
+        aucs = [auc(yb, p) for p in sub]
+        out[j] = np.median(aucs), np.mean(aucs), auc(yb, sub.mean(axis=0))
     return out
 
 
@@ -75,7 +77,7 @@ for task, g in pred.groupby("task"):
     members = [np.flatnonzero(clusters == c) for c in np.unique(clusters)]
     all_inst = [np.arange(len(p)) for p in P]
     observed = scores(P, y, np.arange(len(y)), all_inst)
-    ranks = np.empty((args.resamples, len(P), 2))
+    ranks = np.empty((args.resamples, len(P), len(STATS)))
     for b in range(args.resamples):
         idx = np.concatenate([members[c] for c in rng.integers(0, len(members), len(members))])
         inst = [rng.integers(0, len(p), len(p)) if len(p) > 1 else a for p, a in zip(P, all_inst)]
