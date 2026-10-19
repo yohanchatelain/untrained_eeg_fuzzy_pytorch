@@ -216,7 +216,7 @@ as in the authors' pretraining script; BENDR's input scaling is not documented a
 (per-channel min--max). Each foundation model is a single instance. BENDR's features were nearly
 constant across inputs (median SD across blocks 0.0004, against 0.2--0.9 for EEGPT and LaBraM),
 so it was left out of the ensemble pools and of every test, a decision based on the features and
-not on the results; its AUCs are reported in the supplement \todo{supplement}.
+not on the results; its AUCs are in Table~\ref{tab:bendr}.
 
 \paragraph{Feature counts.} The extractors give very different numbers of features: 64 for the
 small 1D CNN, 128 for EEGNet, 440 for ShallowFBCSPNet (1,080 with the BCI~IV~2a input), 1,216 to
@@ -300,7 +300,7 @@ sleep staging); (3) pretrained checkpoints vs the untrained seeds of the same ar
 input (two-sided Mann--Whitney $U$); (4) scattering scales vs the instances of each other
 extractor with at least three instances (Mann--Whitney $U$); (5) each foundation model vs the
 averaged predictions of all untrained ShallowFBCSPNet instances and of all scattering scales on the
-same samples (paired permutation, 2,000 permutations shared by all pairs of a task, two-sided).
+same samples (paired permutation, 10,000 permutations shared by all pairs of a task, two-sided).
 Tests (1), (2) and (5) are corrected by max-$T$ as above. Tests (3) and (4) have no joint
 permutation null and are Holm-corrected \citep{holm1979}; test (3) has one comparison per task
 except on ds003478 (two). Instance AUCs share the same samples, so tests (3)--(5) ask whether the
@@ -429,7 +429,7 @@ largest matched gap was 0.055 with $C = 1$, 0.042 with PCA and 0.028 with nested
 foundation model's AUC minus that of the 30-seed ShallowFBCSPNet ensemble stayed between $-0.065$
 and $+0.099$ on every task except Parkinson's, under all three probes. On Parkinson's EEGPT reached
 0.863 with $C = 1$ and 0.879 with PCA but 0.650 with nested $C$, whose inner folds hold about five
-participants: this result depends on the probe. \todo{full table in the supplement}
+participants: this result depends on the probe (Table~\ref{tab:probes}).
 
 \subsection{Single-instance results are unstable}
 Variability across random initializations was as large as or larger than the effects of interest.
@@ -445,13 +445,12 @@ with most of the gain reached by $K \approx 5$--10 (Fig.~\ref{fig:ensembles}). O
 averaging the 30 untrained ShallowFBCSPNet seeds raised the AUC from 0.808 (mean single seed) to
 0.861 at $K = 5$, 0.875 at $K = 10$ and 0.880 at $K = 30$, against 0.912 for the best foundation
 model (CBraMod). On the nine tasks with foundation models, no foundation model was significantly
-better than the 30-seed ShallowFBCSPNet ensemble ($p_\text{maxT}$ from 0.059 to 1 where the
-foundation model scored higher, the lowest for EEGPT on Parkinson's); the 9 significant
+better than the 30-seed ShallowFBCSPNet ensemble ($p_\text{maxT}$ from 0.075 to 1 where the
+foundation model scored higher, the lowest for EEGPT on Parkinson's); the 8 significant
 differences all favoured the ensemble. Against the scattering ensemble, four foundation-model
-results were significantly better: EEGPT on Parkinson's ($p_\text{maxT} = 0.013$), EEGPT and
-LaBraM on BDI with eyes open, where scattering is below chance (AUC 0.427; both
-$p_\text{maxT} = 0.012$), and CodeBrain on age with eyes closed (0.969 vs 0.944,
-$p_\text{maxT} = 0.034$). With 52--65 participants on the dementia tasks, this means that the
+results were significantly better: EEGPT on Parkinson's ($p_\text{maxT} = 0.012$), EEGPT and
+LaBraM on BDI with eyes open, where scattering is below chance (AUC 0.427; $p_\text{maxT} = 0.004$
+and 0.008), and CodeBrain on age with eyes closed (0.969 vs 0.944, $p_\text{maxT} = 0.032$). With 52--65 participants on the dementia tasks, this means that the
 foundation models and the untrained ensemble cannot be told apart at these sample sizes, not that
 they are equivalent.
 
@@ -484,7 +483,7 @@ about networks of the same size pretrained on large corpora, which we did not te
 \paragraph{Foundation models lead on single instances, not against ensembles.} The best single
 foundation model had the highest AUC on 8 of the 9 tasks where foundation models ran
 (Table~\ref{tab:best}), yet none was significantly better than the averaged predictions of 30
-untrained ShallowFBCSPNet instances, and the 9 significant differences all favoured the ensemble.
+untrained ShallowFBCSPNet instances, and the 8 significant differences all favoured the ensemble.
 Averaging the predictions of instances with different random weights reduces the variance that each
 random feature map adds to the probe's output; most of the gain arrived by $K = 5$--10
 (Fig.~\ref{fig:ensembles}). Scattering, a single deterministic transform, exceeded the best untrained
@@ -508,7 +507,7 @@ ranged from 0.435 to 0.680, and on Parkinson's single 1D CNN seeds ranged from 0
 study that reports one random initialization can therefore obtain almost any result in that range,
 and a pretrained model compared with it can appear better or worse by chance. The choice of test
 mattered as well. For the 30-seed 1D CNN ensemble on BDI with eyes closed, a label permutation that
-did not refit the probe gave $p_\text{maxT} = 0.011$, while the refit permutation of the same
+did not refit the probe gave $p_\text{maxT} = 0.013$, while the refit permutation of the same
 ensemble, which accounts for the probes having been fitted on the true labels \citep{ojala2010},
 gave 0.093. The refit test of its median instance was borderline (0.042) and that of its best
 instance was not significant (0.24). We suggest reporting untrained baselines as a distribution over seeds or as an ensemble, and
@@ -558,4 +557,154 @@ Alliance of Canada).}
 
 \bibliographystyle{plainnat}
 \bibliography{references}
+
+\clearpage
+\appendix
+\renewcommand{\thetable}{S\arabic{table}}
+\setcounter{table}{0}
+\section*{Supplementary material}
+
+\paragraph{BENDR.} Table~\ref{tab:bendr} gives BENDR's AUCs. Its features were nearly constant
+across inputs (median SD across blocks 0.0004, against 0.2--0.9 for EEGPT and LaBraM), so it was
+left out of the ensemble pools and of every test (Section~\ref{sec:extractors}).
+
+% results/phase1/<dataset>/metrics.csv, extractor bendr: fixed split, and SD over 30 CV splits.
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{BENDR: AUC at the fixed split and SD over 30 cross-validation splits.}
+\label{tab:bendr}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Task & AUC & Split SD \\
+\midrule
+Eyes closed vs open & 0.568 & 0.007 \\
+BDI, eyes closed & 0.439 & 0.052 \\
+BDI, eyes open & 0.430 & 0.031 \\
+AD vs control & 0.684 & 0.021 \\
+FTD vs control & 0.496 & 0.064 \\
+PD vs control & 0.425 & 0.073 \\
+Young vs old, EC & 0.537 & 0.019 \\
+Young vs old, EO & 0.440 & 0.040 \\
+Left vs right MI & 0.527 & 0.006 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Probe regularization.} Table~\ref{tab:probes} repeats the two comparisons of the main
+text under the three probes. With nested cross-validation the median chosen $C$ over tasks was 1
+for the small 1D CNN; 0.1 for EEGNet (all channels and three channels), ShallowFBCSPNet and the
+EEGNetv4 checkpoints; 0.01 for scattering and the foundation models except EEGPT (0.001); and
+0.001 to 0.006 for ShallowFBCSPNet with the BCI~IV~2a input and its pretrained checkpoints.
+
+% results/phase1 (C = 1) and results/sensitivity/{pca,nested}/<dataset>/: median instance.
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{The main comparisons under three probes: $C = 1$, PCA to 32 whitened components, and
+$C$ chosen by inner cross-validation. Left: EEGNetv4 checkpoints minus their untrained twins (mean
+AUC). Right: best foundation model (median instance) minus the 30-seed ShallowFBCSPNet ensemble.}
+\label{tab:probes}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+& \multicolumn{3}{c}{Matched gap} & \multicolumn{3}{c}{Best FM $-$ ensemble} \\
+\cmidrule(lr){2-4}\cmidrule(l){5-7}
+Task & $C = 1$ & PCA & nested & $C = 1$ & PCA & nested \\
+\midrule
+Eyes closed vs open & $-0.039$ & $-0.038$ & $-0.049$ & $+0.007$ & $+0.000$ & $+0.003$ \\
+BDI, eyes closed & $+0.033$ & $+0.016$ & $+0.006$ & $+0.099$ & $+0.076$ & $+0.066$ \\
+BDI, eyes open & $+0.018$ & $-0.012$ & $+0.003$ & $+0.041$ & $+0.028$ & $+0.008$ \\
+AD vs control & $+0.052$ & $+0.032$ & $+0.003$ & $+0.044$ & $+0.022$ & $+0.002$ \\
+FTD vs control & $+0.055$ & $+0.035$ & $+0.028$ & $+0.031$ & $+0.070$ & $+0.025$ \\
+PD vs control & $+0.015$ & $+0.040$ & $-0.005$ & $+0.258$ & $+0.238$ & $+0.075$ \\
+Young vs old, EC & $+0.007$ & $+0.012$ & $+0.004$ & $+0.027$ & $+0.022$ & $+0.015$ \\
+Young vs old, EO & $+0.004$ & $-0.001$ & $+0.001$ & $+0.005$ & $+0.001$ & $-0.001$ \\
+Left vs right MI & $+0.021$ & $+0.042$ & $+0.028$ & $-0.044$ & $-0.037$ & $-0.065$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Foundation models against single seeds.} The paired test compares one foundation
+model with an ensemble of 30 instances, which favours the ensemble by construction.
+Table~\ref{tab:fmseeds} compares each foundation model with the single untrained ShallowFBCSPNet
+seeds instead.
+
+% results/stats/fm_vs_seeds.csv (ref shallow): share of the 30 seeds whose AUC the FM exceeds.
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{3.5pt}
+\caption{Share (\%) of the 30 untrained ShallowFBCSPNet seeds whose AUC each foundation model
+exceeds (ties count half). --: not run.}
+\label{tab:fmseeds}
+\begin{tabular}{@{}lrrrrrrrrr@{}}
+\toprule
+& EC/EO & BDI EC & BDI EO & AD & FTD & PD & Age EC & Age EO & MI \\
+\midrule
+EEGPT & 100 & 100 & 90 & 43 & 77 & 100 & 100 & 100 & 100 \\
+LaBraM & 100 & 83 & 57 & 97 & 60 & 65 & 100 & 93 & 0 \\
+CBraMod & 3 & 0 & 3 & 70 & 100 & 43 & 93 & 100 & 0 \\
+CodeBrain & 100 & 50 & 0 & 60 & 100 & 37 & 100 & 88 & -- \\
+EEG-DINO S & 97 & 97 & 10 & 77 & 90 & 55 & 100 & 93 & -- \\
+EEG-DINO M & 97 & 100 & 10 & 43 & 40 & 77 & 80 & 43 & -- \\
+Signal-JEPA & 0 & 13 & 20 & 62 & 90 & 0 & 0 & 0 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Motor imagery per subject.} Each subject has its own probe, so the AUC over all
+subjects' trials mixes the calibrations of nine probes. Table~\ref{tab:misubject} gives the
+per-subject AUC; the order of the extractors is the same.
+
+% results/phase1/bnci2014_001/metrics.csv: auc_subject_mean, auc_subject_sd (median instance).
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{Left vs right hand motor imagery: AUC per subject (mean and SD over the 9 subjects) and
+AUC over all trials, median instance.}
+\label{tab:misubject}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Extractor & Per subject & SD & All trials \\
+\midrule
+Scattering & 0.866 & 0.104 & 0.876 \\
+EEGPT & 0.831 & 0.135 & 0.858 \\
+ShallowFBCSPNet & 0.797 & 0.121 & 0.810 \\
+Shallow, 2a input & 0.771 & 0.129 & 0.784 \\
+Small 1D CNN & 0.771 & 0.120 & 0.792 \\
+EEGNetv4 & 0.769 & 0.120 & 0.786 \\
+EEGNet, 3 ch & 0.759 & 0.113 & 0.773 \\
+LaBraM & 0.754 & 0.130 & 0.765 \\
+EEGNet & 0.754 & 0.094 & 0.763 \\
+Signal-JEPA & 0.692 & 0.093 & 0.697 \\
+CBraMod & 0.684 & 0.080 & 0.686 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Uncertainty of the ranking.} Table~\ref{tab:ranks} gives, for each task, the three
+extractors with the highest mean AUC, with the share of 1,000 bootstrap resamples in which each
+ranks first and its 95\,\% rank interval. A resample draws participants (subjects for motor
+imagery) with replacement and, for extractors with several instances, instances with replacement.
+The probe is not refit in each resample, so the intervals are somewhat too narrow; foundation
+models, with one instance, get no instance resampling.
+
+% results/stats/ranking_<dataset>.csv, statistic mean (scripts/ranking.py).
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{3pt}
+\caption{Top three extractors per task by mean AUC: share of resamples ranked first, 95\,\% rank
+interval.}
+\label{tab:ranks}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Task & First & Second & Third \\
+\midrule
+Eyes closed vs open & CodeBrain (59\,\%, 1--4) & EEGPT (25\,\%, 1--4) & LaBraM (11\,\%, 1--5) \\
+BDI, eyes closed & EEGPT (53\,\%, 1--6) & EEG-DINO M (21\,\%, 1--7) & EEG-DINO S (11\,\%, 1--8) \\
+BDI, eyes open & EEGPT (67\,\%, 1--5) & LaBraM (11\,\%, 1--9) & Shallow, 2a input (9\,\%, 1--8) \\
+AD vs control & LaBraM (78\,\%, 1--3) & EEG-DINO S (9\,\%, 1--9) & CBraMod (1\,\%, 2--8) \\
+FTD vs control & CBraMod (52\,\%, 1--6) & CodeBrain (26\,\%, 1--5) & Scattering (3\,\%, 1--8) \\
+PD vs control & EEGPT (98\,\%, 1--1) & EEG-DINO M (2\,\%, 2--10) & LaBraM (0\,\%, 2--10) \\
+Young vs old, EC & LaBraM (58\,\%, 1--4) & CodeBrain (35\,\%, 1--4) & EEGPT (3\,\%, 1--5) \\
+Young vs old, EO & EEGPT (45\,\%, 1--4) & CBraMod (41\,\%, 1--4) & EEG-DINO S (10\,\%, 1--6) \\
+Left vs right MI & Scattering (81\,\%, 1--2) & EEGPT (19\,\%, 1--3) & ShallowFBCSPNet (0\,\%, 3--5) \\
+Sleep staging & Small 1D CNN (95\,\%, 1--2) & Scattering (5\,\%, 1--2) & ShallowFBCSPNet (0\,\%, 3--3) \\
+\bottomrule
+\end{tabular}
+\end{table}
 \end{document}
