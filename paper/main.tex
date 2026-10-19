@@ -79,7 +79,8 @@ the uncertainty of a cross-validated AUC is of the same order as the differences
 training process, whose variability is usually unknown.
 
 We compare four kinds of frozen feature extractors: untrained convolutional networks (30 seeds
-each), wavelet scattering, pretrained convolutional networks and eight foundation models. Each is
+each), wavelet scattering, pretrained convolutional networks and seven foundation models (an eighth, BENDR, gave nearly
+constant features and was left out). Each is
 read out by the same logistic-regression probe on ten classification tasks from six open datasets.
 The design isolates the pretrained weights by pairing each pretrained network with untrained copies
 of the same architecture fed the same input, measures the spread across seeds, checkpoints and
@@ -422,7 +423,7 @@ BNCI2014\_001 & EEGNetv4 & Left vs right MI & 0.793 & 0.773 & $+0.021$ & 0.015 &
 
 \subsection{Probe regularization}
 With $C$ chosen by inner cross-validation, the foundation models and scattering chose $C \approx
-0.01$, a hundred times stronger regularization than the main probe, the small 1D CNN $C = 1$ and
+0.01$ (0.001 for EEGPT), a hundred times stronger regularization than the main probe, the small 1D CNN $C = 1$ and
 EEGNet and ShallowFBCSPNet $C = 0.1$. The comparisons above held under both alternative probes. The
 largest matched gap was 0.055 with $C = 1$, 0.042 with PCA and 0.028 with nested $C$. The best
 foundation model's AUC minus that of the 30-seed ShallowFBCSPNet ensemble stayed between $-0.065$
