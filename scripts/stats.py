@@ -27,12 +27,15 @@ by construction, so results/stats/fm_vs_seeds.csv also gives (no test) each FM's
 single instances of the ShallowFBCSPNet and scattering: their mean, SD and the share it beats
 (ties count half), next to the ensemble's AUC.
 
-Writes results/stats/stats.csv and fm_vs_seeds.csv.
+Writes results/stats/stats.csv and fm_vs_seeds.csv, for the datasets of the paper (DATASETS;
+--datasets for others found in results/phase1/).
 
     python scripts/stats.py
 """
 
+import argparse
 import sys
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -44,9 +47,10 @@ from untrained_eeg.foundation import EXCLUDED, FOUNDATION
 from untrained_eeg.multitest import holm, maxt
 from untrained_eeg.tasks import MULTICLASS, auc_score
 
+DATASETS = ["ds003478", "ds004504", "ds002778", "lemon", "bnci2014_001", "sleep_edf"]  # the paper's
 MATCHED = [("eegnetv4", "eegnet_3ch"), ("shallow_pretrained", "shallow_bcic2a")]
 N_PERM = 10_000  # above_chance
-N_PAIRED = 2000  # fm_vs_ensemble
+N_PAIRED = 10_000  # fm_vs_ensemble (2,000 left about +-0.005 of Monte Carlo error near p = 0.05)
 
 
 def label_nulls(y, scores, groups, rng):
@@ -93,9 +97,12 @@ def ensemble_scores(g):
     return w[0].index, y, (s if s.shape[1] > 1 else s[:, 0]), w[0].shape[1]
 
 
-rng = np.random.default_rng(0)
+parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+parser.add_argument("--datasets", nargs="+", default=DATASETS, help="folders of results/phase1/ to test")
+args = parser.parse_args()
+
 rows, seed_rows = [], []
-for d in sorted((REPO / "results" / "phase1").iterdir()):
+for d in [REPO / "results" / "phase1" / ds for ds in args.datasets]:
     if not (d / "metrics.csv").exists():
         continue
     ds = d.name
@@ -104,6 +111,8 @@ for d in sorted((REPO / "results" / "phase1").iterdir()):
     preds = pd.read_csv(d / "predictions.csv.gz")
     preds = preds[(preds.cv_seed == preds.cv_seed.min()) & ~preds.extractor.isin(EXCLUDED)]
     for task, mt in m.groupby("task"):
+        # one random stream per task: its permutations do not depend on the other datasets run
+        rng = np.random.default_rng(zlib.crc32(f"{ds}|{task}".encode()))
         auc = {e: g.auc.to_numpy() for e, g in mt.groupby("extractor")}
         pt = preds[preds.task == task]
         ens = {e: ensemble_scores(g) for e, g in pt.groupby("extractor")}  # all instances averaged
