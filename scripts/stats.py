@@ -42,10 +42,10 @@ import numpy as np
 import pandas as pd
 from scipy.stats import mannwhitneyu
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from untrained_eeg.data import REPO
+from untrained_eeg.data import REPO, load_config
 from untrained_eeg.foundation import EXCLUDED, FOUNDATION
 from untrained_eeg.multitest import holm, maxt
-from untrained_eeg.tasks import MULTICLASS, auc_score
+from untrained_eeg.tasks import MULTICLASS, WITHIN_SUBJECT, auc_score
 
 DATASETS = ["ds003478", "ds004504", "ds002778", "lemon", "bnci2014_001", "sleep_edf"]  # the paper's
 MATCHED = [("eegnetv4", "eegnet_3ch"), ("shallow_pretrained", "shallow_bcic2a")]
@@ -101,15 +101,17 @@ parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.R
 parser.add_argument("--datasets", nargs="+", default=DATASETS, help="folders of results/phase1/ to test")
 args = parser.parse_args()
 
+CONFIGS = [load_config(p) for p in sorted((REPO / "configs").glob("*.yaml"))]
+CV_SEED = {c["openneuro"]["id"]: c["cv_seed"] for c in CONFIGS}  # each dataset's fixed split
 rows, seed_rows = [], []
 for d in [REPO / "results" / "phase1" / ds for ds in args.datasets]:
     if not (d / "metrics.csv").exists():
         continue
     ds = d.name
     m = pd.read_csv(d / "metrics.csv")
-    m = m[(m.cv_seed == m.cv_seed.min()) & ~m.extractor.isin(EXCLUDED)]  # the fixed split; no BENDR
+    m = m[(m.cv_seed == CV_SEED[ds]) & ~m.extractor.isin(EXCLUDED)]  # the config's fixed split; no BENDR
     preds = pd.read_csv(d / "predictions.csv.gz")
-    preds = preds[(preds.cv_seed == preds.cv_seed.min()) & ~preds.extractor.isin(EXCLUDED)]
+    preds = preds[(preds.cv_seed == CV_SEED[ds]) & ~preds.extractor.isin(EXCLUDED)]
     for task, mt in m.groupby("task"):
         # one random stream per task: its permutations do not depend on the other datasets run
         rng = np.random.default_rng(zlib.crc32(f"{ds}|{task}".encode()))
@@ -119,7 +121,7 @@ for d in [REPO / "results" / "phase1" / ds for ds in args.datasets]:
         ids, y = next(iter(ens.values()))[:2]
         assert all(list(v[0]) == list(ids) for v in ens.values()), "extractors must share the samples"
         # ensemble of all instances vs chance, every extractor on the same label permutations
-        clustered = task in ("ec_eo", "mi_left_right") or task in MULTICLASS  # several samples per person
+        clustered = task == "ec_eo" or task in WITHIN_SUBJECT or task in MULTICLASS  # several samples per person
         groups = np.array([i.split("/")[0] for i in ids]) if clustered else None
         obs, null = label_nulls(y, [v[2] for v in ens.values()], groups, rng)
         for (e, (_, _, _, n)), o, p, pm in zip(ens.items(), obs, raw_p(obs, null), maxt(null, obs)):

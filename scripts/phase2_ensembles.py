@@ -118,6 +118,13 @@ for pool, extractors in POOLS.items():
     if p[["extractor", "instance"]].drop_duplicates().shape[0] < 2:  # nothing to combine
         continue
     insts = sorted(set(zip(p.extractor, p.instance)))  # (extractor, instance) members
+    feats = None
+    if len(extractors) == 1:  # features can be averaged only within one extractor
+        files = [src / "features" / e / f"{i}.npz" for e, i in insts]
+        f0 = {k: np.load(files[0])[k] for k in ("cond", "participant_id")}  # arrays: workers get copies
+        feats = [np.load(f)["feats"] for f in files]
+        if len({x.shape for x in feats}) > 1:  # e.g. scattering: feature count depends on J
+            feats = None
     for task in TASKS:
         t = p[p.task == task]
         if task in MULTICLASS:  # instances x samples x classes
@@ -129,14 +136,9 @@ for pool, extractors in POOLS.items():
         else:  # instances x samples
             wide = t.pivot_table(index="sample", columns=["extractor", "instance"], values="prob")[insts]
             P = wide.to_numpy().T
+        if wide.isna().any().any():  # e.g. extractors whose preprocessing kept different blocks
+            raise ValueError(f"{pool} {task}: the instances do not have the same samples")
         y = t.drop_duplicates("sample").set_index("sample").label.loc[wide.index].to_numpy()
-        feats = None
-        if len(extractors) == 1:  # features can be averaged only within one extractor
-            files = [src / "features" / e / f"{i}.npz" for e, i in insts]
-            f0 = {k: np.load(files[0])[k] for k in ("cond", "participant_id")}  # arrays: workers get copies
-            feats = [np.load(f)["feats"] for f in files]
-            if len({x.shape for x in feats}) > 1:  # e.g. scattering: feature count depends on J
-                feats = None
         features_ok = feats is not None and cfg.get("ensemble_features", True)  # off where probes are slow
         methods = ["average", "vote"] + (["features"] if features_ok else [])
         for k in range(1, min(len(insts), args.max_k) + 1):
@@ -148,6 +150,7 @@ for pool, extractors in POOLS.items():
                     scores = Parallel(n_jobs=args.workers)(
                         delayed(feature_ensemble)(X, yy, g, task, cfg) for X, yy, g, _ in inputs)
                     order = pd.Index(inputs[0][3]).get_indexer(wide.index)  # samples in the order of P
+                    assert (order >= 0).all(), "feature samples differ from the predictions'"
                     scores = np.array([s[order] for s in scores])
                 elif method == "average":
                     scores = np.array([P[d].mean(axis=0) for d in draws])
