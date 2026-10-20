@@ -36,7 +36,8 @@ def load_config(path=REPO / "configs" / "ds003478.yaml"):
 
 
 # Variants every dataset has: the sampling rates (and window) foundation models expect.
-COMMON_VARIANTS = {"fm200": {"sfreq": 200}, "fm250": {"sfreq": 250}, "fm256": {"sfreq": 256},
+COMMON_VARIANTS = {"fm128": {"sfreq": 128}, "fm200": {"sfreq": 200}, "fm250": {"sfreq": 250},
+                   "fm256": {"sfreq": 256},
                    "fm200_30s": {"sfreq": 200, "window_s": 30}}
 
 
@@ -46,11 +47,17 @@ def variant_config(cfg, name):
     "standard" is the top-level settings. Other variants override some of them (e.g. the
     input a pretrained model was trained on) and get their own cache folder.
     """
-    if name == "standard":
+    if name == "standard" or same_as_standard(cfg, name):
         return cfg
     out = {**cfg, **{**COMMON_VARIANTS, **cfg.get("preprocessing", {})}[name]}
     out["cache_dir"] = Path(cfg["cache_dir"]) / name
     return out
+
+
+def same_as_standard(cfg, name):
+    """True if a common variant changes nothing (e.g. fm128 on a 128 Hz dataset): no second cache."""
+    v = {**COMMON_VARIANTS, **cfg.get("preprocessing", {})}.get(name)
+    return v is not None and all(cfg.get(k) == x for k, x in v.items())
 
 
 def _data_dir(cfg):
@@ -61,23 +68,31 @@ def _data_dir(cfg):
     """
     if cfg["data_dir"]:
         return Path(cfg["data_dir"])  # an existing copy: never written to
-    src = cfg["openneuro"]
-    path = REPO / "data" / "raw" / src["id"]
+    path = REPO / "data" / "raw" / cfg["openneuro"]["id"]
     done = path / ".download_complete"  # written last, so an interrupted download resumes
     if not done.exists():
-        from .download import download_openneuro
-
-        print(f"downloading {src['id']} into {path}")
-        if "urls" in src:  # plain files on a web server (BNCI)
-            from .download import download_urls
-
-            download_urls(src["urls"], path)
-        elif "bucket" in src:  # another public S3 bucket (MPI-LEMON, PhysioNet's mirror)
-            download_openneuro(src["prefix"], path, src["include"], bucket=src["bucket"])
-        else:
-            download_openneuro(src["id"], path, src["include"], src["version"])
+        if "SLURM_JOB_ID" in os.environ:  # Rorqual's compute nodes have no internet
+            raise RuntimeError(f"{path} is missing or incomplete: download it first, on the login node "
+                               f"(bash scripts/00_download_data.sh {path.name})")
+        download(cfg, path)
         done.touch()
     return path
+
+
+def download(cfg, path):
+    """Download the dataset of a config into `path` (files already there are skipped)."""
+    from .download import download_openneuro
+
+    src = cfg["openneuro"]
+    print(f"downloading {src['id']} into {path}")
+    if "urls" in src:  # plain files on a web server (BNCI)
+        from .download import download_urls
+
+        download_urls(src["urls"], path)
+    elif "bucket" in src:  # another public S3 bucket (MPI-LEMON, PhysioNet's mirror)
+        download_openneuro(src["prefix"], path, src["include"], bucket=src["bucket"])
+    else:
+        download_openneuro(src["id"], path, src["include"], src["version"])
 
 
 def load_participants(cfg):
