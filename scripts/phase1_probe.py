@@ -40,10 +40,13 @@ args = parser.parse_args()
 cfg = load_config(args.config) if args.config else load_config()
 if "cv_split_seeds" in cfg:  # a dataset whose probes are slow (sleep staging) uses fewer
     args.cv_seeds = args.cv_seeds[: cfg["cv_split_seeds"]]
+if cfg["cv_seed"] not in args.cv_seeds:  # the first instance also needs the fixed split
+    args.cv_seeds = [cfg["cv_seed"], *args.cv_seeds]
 root = Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"]
 labels = task_labels(cfg)
 metrics, preds = [], []
 for ext_dir in sorted(p for p in (root / "features").iterdir() if p.is_dir()):
+    start = len(metrics)  # this extractor's rows start here
     for i, path in enumerate(sorted(ext_dir.glob("*.npz"))):
         f = np.load(path)
         cv_seeds = args.cv_seeds if i == 0 else [cfg["cv_seed"]]
@@ -57,8 +60,8 @@ for ext_dir in sorted(p for p in (root / "features").iterdir() if p.is_dir()):
                 cols = {"prob": prob} if prob.ndim == 1 else {f"prob_{k}": prob[:, k] for k in range(prob.shape[1])}
                 preds.append(pd.DataFrame(dict(extractor=ext_dir.name, instance=path.stem, task=task,
                                                cv_seed=cv_seed, sample=ids, label=y, **cols)))
-    m = pd.DataFrame(metrics)
-    m = m[(m.extractor == ext_dir.name) & (m.cv_seed == cfg["cv_seed"])]
+    m = pd.DataFrame(metrics[start:])
+    m = m[m.cv_seed == cfg["cv_seed"]]
     for task, g in m.groupby("task"):
         print(f"{ext_dir.name:18s} {task:10s} {len(g):3d} instances: AUC {g.auc.mean():.3f} ± {g.auc.std():.3f}",
               flush=True)

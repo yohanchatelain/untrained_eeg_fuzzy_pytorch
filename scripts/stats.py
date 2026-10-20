@@ -30,9 +30,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import mannwhitneyu
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from untrained_eeg.data import REPO
+from untrained_eeg.data import REPO, load_config
 from untrained_eeg.foundation import FOUNDATION
-from untrained_eeg.tasks import MULTICLASS, auc_score
+from untrained_eeg.tasks import MULTICLASS, WITHIN_SUBJECT, auc_score
 
 MATCHED = [("eegnetv4", "eegnet_3ch"), ("shallow_pretrained", "shallow_bcic2a")]
 N_PERM = 10_000
@@ -86,23 +86,25 @@ def ensemble_scores(g):
     return w[0].index, y, (s if s.shape[1] > 1 else s[:, 0]), w[0].shape[1]
 
 
+CONFIGS = [load_config(p) for p in sorted((REPO / "configs").glob("*.yaml"))]
+CV_SEED = {c["openneuro"]["id"]: c["cv_seed"] for c in CONFIGS}  # each dataset's fixed split
 rng = np.random.default_rng(0)
 rows = []
 for d in sorted((REPO / "results" / "phase1").iterdir()):
-    if not (d / "metrics.csv").exists():
+    if not (d / "metrics.csv").exists() or d.name not in CV_SEED:  # no config: not a dataset of the paper
         continue
     ds = d.name
     m = pd.read_csv(d / "metrics.csv")
-    m = m[m.cv_seed == m.cv_seed.min()]  # the fixed split of the config
+    m = m[m.cv_seed == CV_SEED[ds]]  # the fixed split of the config
     preds = pd.read_csv(d / "predictions.csv.gz")
-    preds = preds[preds.cv_seed == preds.cv_seed.min()]
+    preds = preds[preds.cv_seed == CV_SEED[ds]]
     for task, mt in m.groupby("task"):
         auc = {e: g.auc.to_numpy() for e, g in mt.groupby("extractor")}
         pt = preds[preds.task == task]
         ens = {}
         for e, g in pt.groupby("extractor"):  # ensemble of all instances vs chance
             ids, y, s, n = ens[e] = ensemble_scores(g)
-            clustered = task in ("ec_eo", "mi_left_right") or task in MULTICLASS  # several samples per person
+            clustered = task == "ec_eo" or task in WITHIN_SUBJECT or task in MULTICLASS  # several samples per person
             groups = np.array([i.split("/")[0] for i in ids]) if clustered else None
             obs, p = permutation_p(y, s, groups, rng)
             rows.append(dict(test="above_chance", dataset=ds, task=task, a=e, b="chance",
@@ -111,7 +113,10 @@ for d in sorted((REPO / "results" / "phase1").iterdir()):
             for ref in ("shallow", "scattering"):
                 if ref in ens:
                     ids, y, s_fm, _ = ens[fm]
-                    s_ref = ens[ref][2][pd.Index(ens[ref][0]).get_indexer(ids)]
+                    order = pd.Index(ens[ref][0]).get_indexer(ids)
+                    if (order < 0).any():  # e.g. preprocessing that kept different blocks
+                        raise ValueError(f"{ds} {task}: {fm} and {ref} do not have the same samples")
+                    s_ref = ens[ref][2][order]
                     diff, p = paired_p(y, s_fm, s_ref, rng)
                     rows.append(dict(test="fm_vs_ensemble", dataset=ds, task=task, a=fm, b=ref,
                                      auc_a=auc_score(y, s_fm), auc_b=auc_score(y, s_ref), n_a=1, n_b=ens[ref][3], p=p))

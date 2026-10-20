@@ -36,7 +36,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from untrained_eeg.data import COMMON_VARIANTS, load_config, load_dataset, variant_config
+from untrained_eeg.data import COMMON_VARIANTS, load_config, load_dataset, same_as_standard, variant_config
 from untrained_eeg.foundation import FOUNDATION, HF_HOME, Foundation, variant_of
 from untrained_eeg.models import WaveletScattering, build_model, embed
 from untrained_eeg.pretrained import EEGNETV4_CHANNELS, EEGNETV4_DATASETS, SHALLOW_CHECKPOINTS, load_eegnetv4, load_shallow
@@ -97,9 +97,12 @@ os.environ.setdefault("HF_HOME", str(HF_HOME))  # foundation-model weights, read
 cfg = load_config(args.config) if args.config else load_config()
 out_root = Path(cfg["results_dir"]) / "phase1" / cfg["openneuro"]["id"] / "features"
 data = {}  # the current preprocessing variant -> (participants, {participant_id: (X, cond)})
+# each extractor's variant, "standard" when that is the same input (e.g. fm128 on a 128 Hz dataset)
+variants = {n: "standard" if same_as_standard(cfg, v) else v for n, (_, v, _) in EXTRACTORS.items()}
 
-for name in sorted(args.extractors, key=lambda n: EXTRACTORS[n][1]):  # one variant at a time
-    group, variant, subset = EXTRACTORS[name]
+for name in sorted(args.extractors, key=variants.get):  # one variant at a time
+    group, _, subset = EXTRACTORS[name]
+    variant = variants[name]
     if name in cfg.get("exclude", {}).get("extractors", []):
         print(f"{name}: skipped, trained on this dataset (leakage)", flush=True)
         continue

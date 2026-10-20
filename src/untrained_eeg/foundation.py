@@ -7,7 +7,8 @@ the braindecode Hugging Face page (bash scripts/00_download_pretrained.sh), read
 Each model gets the input it was pretrained on: its sampling rate (a preprocessing variant,
 see `VARIANT`), its channels (all the dataset's, or the 19 of the 10-20 system), its window
 length and its amplitude scale. Its features, averaged over time patches with channel and
-embedding axes kept, play the role of the CNN features.
+embedding axes kept, play the role of the CNN features. How to average is set per model
+(`TOKENS`), not guessed from the output's shape.
 
   eegpt          EEGPT, 250 Hz, all channels, millivolts (as in the authors' pretraining script)
   labram         LaBraM, 200 Hz, all channels, microvolts / 100 (0.1 mV units)
@@ -47,7 +48,12 @@ FOUNDATION = {  # key: class, repo, sfreq, channels, window_s (None = the datase
     "eegdino_medium": ("EEGDINO", "braindecode/eegdino-medium-pretrained", 200, "ten20", None, "0.1mv", "hub"),
     "signal_jepa": ("SignalJEPA", "braindecode/signal-jepa", 128, "lee2019", None, "uv", "hub"),
 }
-VARIANT = {200: "fm200", 250: "fm250", 128: "standard"}  # sampling rate -> preprocessing variant
+VARIANT = {200: "fm200", 250: "fm250", 128: "fm128"}  # sampling rate -> preprocessing variant
+# Models whose features are (batch, tokens, dim): "channels" = channel-major tokens
+# (channels * patches), averaged over each channel's patches; "time" = time tokens, averaged.
+# Others return (batch, channels, patches, dim), averaged over patches, or (batch, dim).
+TOKENS = {"labram": "channels", "eegdino_small": "channels", "eegdino_medium": "channels",
+          "signal_jepa": "channels", "eegpt": "time"}
 
 
 def variant_of(key):
@@ -145,6 +151,7 @@ class Foundation(nn.Module):
             raise ValueError(f"{key}: the dataset lacks {missing}")
         self.register_buffer("idx", torch.tensor([names.index(c) for c in want]), persistent=False)
         self.n_chans = len(want)
+        self.tokens = TOKENS.get(key)
         self.model = _build(cls_name, repo, want, sfreq, n_times, how)
         self.fwd = {"ch_names": want} if cls_name == "Labram" else {}
 
@@ -161,8 +168,12 @@ class Foundation(nn.Module):
         f = out["features"] if isinstance(out, dict) else out
         if f.dim() == 4:  # (batch, channels, patches, dim): average the time patches
             f = f.mean(dim=2)
-        elif f.dim() == 3 and f.shape[1] % self.n_chans == 0:  # (batch, channels * patches, dim)
+        elif f.dim() == 3 and self.tokens == "channels":  # (batch, channels * patches, dim)
+            if f.shape[1] % self.n_chans:
+                raise ValueError(f"{f.shape[1]} tokens for {self.n_chans} channels")
             f = f.reshape(f.shape[0], self.n_chans, -1, f.shape[-1]).mean(dim=2)
-        elif f.dim() == 3:  # (batch, tokens, dim) without a channel axis
+        elif f.dim() == 3 and self.tokens == "time":  # (batch, time tokens, dim)
             f = f.mean(dim=1)
+        elif f.dim() != 2:
+            raise ValueError(f"unexpected feature shape {tuple(f.shape)}: set the model's TOKENS")
         return f
