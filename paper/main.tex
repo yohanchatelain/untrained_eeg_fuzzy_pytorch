@@ -43,7 +43,8 @@ disease, age, motor imagery and sleep staging). Pretrained EEGNet checkpoints ga
 0.055 AUC over randomly initialized copies of the same network, less than the spread across
 random seeds on all but one task. Single foundation models reach the highest AUC on most tasks,
 but averaging the predictions of 30 untrained ShallowFBCSPNet instances closes most of the gap,
-and no foundation model is significantly better than this ensemble. Single random initializations of the same network differ by up to 0.26 AUC on depression and
+and no foundation model is significantly better than this ensemble; at these sample sizes the
+two cannot be told apart, which does not make them equivalent. Single random initializations of the same network differ by up to 0.26 AUC on depression and
 0.49 on Parkinson's disease, so untrained baselines should be reported over many seeds or as
 ensembles.
 \end{abstract}
@@ -79,8 +80,8 @@ the uncertainty of a cross-validated AUC is of the same order as the differences
 training process, whose variability is usually unknown.
 
 We compare four kinds of frozen feature extractors: untrained convolutional networks (30 seeds
-each), wavelet scattering, pretrained convolutional networks and seven foundation models (an eighth, BENDR, gave nearly
-constant features and was left out). Each is
+each), wavelet scattering, pretrained convolutional networks and seven foundation models (an eighth, BENDR, was left out: we could not reproduce its
+pretraining input). Each is
 read out by the same logistic-regression probe on ten classification tasks from six open datasets.
 The design isolates the pretrained weights by pairing each pretrained network with untrained copies
 of the same architecture fed the same input, measures the spread across seeds, checkpoints and
@@ -143,7 +144,9 @@ controls; the task was kept despite its small size. For MPI-LEMON \citep{babayan
 the authors' preprocessed eyes-closed and eyes-open recordings (250~Hz; two participants at
 100~Hz) of the 137 participants aged 20--35 and the 65 aged 55--80. BNCI2014\_001
 \citep[BCI Competition IV 2a;][]{tangermann2012, jayaram2018} has 22 EEG channels at 250~Hz;
-we used the left- and right-hand imagery trials of both sessions. Sleep-EDF
+we used the left- and right-hand imagery trials of both sessions, pooled in each subject's
+cross-validation. The competition's protocol trains on the first session and tests on the second,
+so our AUCs are not comparable with published BCI~IV~2a results. Sleep-EDF
 \citep[sleep cassette;][]{kemp2000, goldberger2000} was restricted to the first 20 subjects
 (39 nights) and the Fpz--Cz and Pz--Oz derivations at 100~Hz; stages 3 and 4 were merged into N3,
 and at most 30 epochs per stage and night were drawn with a fixed seed.
@@ -213,10 +216,12 @@ card gives 250~Hz); CodeBrain and EEG-DINO need the 19 channels of the 10--20 sy
 were not run on BNCI2014\_001, and no foundation model was run on Sleep-EDF's two bipolar
 derivations. Features were averaged over time patches, keeping channels. EEGPT received millivolts,
 as in the authors' pretraining script; BENDR's input scaling is not documented and was assumed
-(per-channel min--max). Each foundation model is a single instance. BENDR's features were nearly
-constant across inputs (median SD across blocks 0.0004, against 0.2--0.9 for EEGPT and LaBraM),
-so it was left out of the ensemble pools and of every test, a decision based on the features and
-not on the results; its AUCs are in Table~\ref{tab:bendr}.
+(per-channel min--max). Each foundation model is a single instance. We could not reproduce BENDR's
+pretraining input: with ours its features were nearly constant across inputs (median SD across
+blocks 0.0004, against 0.2--0.9 for EEGPT and LaBraM), which more likely reflects our input
+scaling or the braindecode port than the model itself. It was left out of the ensemble pools and
+of every test, a decision based on the features and not on the results; its AUCs are in
+Table~\ref{tab:bendr}.
 
 \paragraph{Feature counts.} The extractors give very different numbers of features: 64 for the
 small 1D CNN, 128 for EEGNet, 440 for ShallowFBCSPNet (1,080 with the BCI~IV~2a input), 1,216 to
@@ -289,7 +294,9 @@ extractor of a task saw the same 10,000 shuffled labelings. The $p$-values were 
 extractors of each task by the Westfall--Young step-down min-$P$ procedure \citep{westfall1993},
 which uses these joint permutation nulls and therefore the correlation between extractors; it
 controls the familywise error rate like Holm's procedure, with more power when the tests are
-correlated. We report the corrected value as $p_\text{maxT}$. This test was not run on Sleep-EDF,
+correlated. We report the corrected value as $p_\text{maxT}$. The family is one task's extractors: each task
+asks its own question, and the familywise error rate is controlled within a task, not over the
+whole study. This test was not run on Sleep-EDF,
 where five-class probes are slow and every extractor is far above chance.
 
 \paragraph{Secondary tests.} Each corrected per task: (1) the same refit permutation for the
@@ -297,16 +304,20 @@ ensemble of all instances (averaged predictions) and for the best instance (maxi
 instances, compared with the null maximum, so the choice of the best is accounted for);
 (2) the refit permutation of each extractor's first instance alone (1,000 permutations, 200 for
 sleep staging); (3) pretrained checkpoints vs the untrained seeds of the same architecture and
-input (two-sided Mann--Whitney $U$); (4) scattering scales vs the instances of each other
-extractor with at least three instances (Mann--Whitney $U$); (5) each foundation model vs the
-averaged predictions of all untrained ShallowFBCSPNet instances and of all scattering scales on the
-same samples (paired permutation, 10,000 permutations shared by all pairs of a task, two-sided).
-Tests (1), (2) and (5) are corrected by max-$T$ as above. Tests (3) and (4) have no joint
-permutation null and are Holm-corrected \citep{holm1979}; test (3) has one comparison per task
-except on ds003478 (two). Instance AUCs share the same samples, so tests (3)--(5) ask whether the
-weights change the result beyond the weight-to-weight spread; they do not generalize to new
+input (two-sided Mann--Whitney $U$); (4) each foundation model vs the averaged predictions of all
+untrained ShallowFBCSPNet instances and of all scattering scales on the same samples (paired
+permutation, 10,000 permutations shared by all pairs of a task, two-sided; the two models' scores
+are swapped per sample, or per participant, all its samples together, where a participant
+contributes several: eyes closed vs open and motor imagery). These two references were not fixed
+before the study (there was no preregistration); Table~\ref{tab:fmpools} gives each foundation model
+against the ensemble of every untrained network. Tests (1), (2) and (4) are corrected by max-$T$ as
+above. Test (3) has no joint permutation null and is Holm-corrected \citep{holm1979}; it has one
+comparison per task except on ds003478 (two). Scattering is not tested against the other
+extractors: its scales $J = 3, \dots, 8$ are a design choice, not a random sample of instances, so
+it is compared descriptively. Instance AUCs share the same samples, so tests (3) and (4) ask whether
+the weights change the result beyond the weight-to-weight spread; they do not generalize to new
 participants. Per-model tests decide whether each extractor beats chance; extractors are compared
-with one another only through paired tests (3)--(5), never through their $p$-values.
+with one another only through paired tests (3) and (4), never through their $p$-values.
 
 \section{Results}
 
@@ -371,8 +382,8 @@ Sleep-EDF & 5-stage (macro) & Small 1D CNN 0.935 & 0.929 & -- & -- \\
 The depression and Parkinson's tasks were near chance for most extractors. With the primary test,
 79 of the 121 extractor $\times$ task tests were significant: all 11 on motor imagery, all 26 on
 age, 25 of 26 on dementia, 16 of 45 on ds003478 and 1 of 13 on Parkinson's. On ds003478, 15 of
-the 16 are on eyes closed vs open. The sixteenth is the only significant result on depression and
-is borderline: the small 1D CNN on BDI with eyes closed (median instance AUC 0.644, $p = 0.0036$,
+the 16 are on eyes closed vs open. We report depression as a null result: the sixteenth is the
+only significant test of 30 on depression, and it is borderline: the small 1D CNN on BDI with eyes closed (median instance AUC 0.644, $p = 0.0036$,
 $p_\text{maxT} = 0.042$). For the same extractor and task, the ensemble ($p_\text{maxT} = 0.093$)
 and best-instance (0.24) statistics were not significant, nor was EEGPT, the best single model on
 this task (AUC 0.690, $p_\text{maxT} = 0.067$). Nothing was significant on BDI with eyes open. The
@@ -446,8 +457,9 @@ averaging the 30 untrained ShallowFBCSPNet seeds raised the AUC from 0.808 (mean
 0.861 at $K = 5$, 0.875 at $K = 10$ and 0.880 at $K = 30$, against 0.912 for the best foundation
 model (CBraMod). On the nine tasks with foundation models, no foundation model was significantly
 better than the 30-seed ShallowFBCSPNet ensemble ($p_\text{maxT}$ from 0.075 to 1 where the
-foundation model scored higher, the lowest for EEGPT on Parkinson's); the 8 significant
-differences all favoured the ensemble. Against the scattering ensemble, four foundation-model
+foundation model scored higher, the lowest for EEGPT on Parkinson's); the 7 significant
+differences all favoured the ensemble (EEGPT on motor imagery, 0.858 vs 0.902, was not significant
+once the swaps kept each subject's trials together: $p_\text{maxT} = 0.24$). Against the scattering ensemble, four foundation-model
 results were significantly better: EEGPT on Parkinson's ($p_\text{maxT} = 0.012$), EEGPT and
 LaBraM on BDI with eyes open, where scattering is below chance (AUC 0.427; $p_\text{maxT} = 0.004$
 and 0.008), and CodeBrain on age with eyes closed (0.969 vs 0.944, $p_\text{maxT} = 0.032$). With 52--65 participants on the dementia tasks, this means that the
@@ -483,7 +495,7 @@ about networks of the same size pretrained on large corpora, which we did not te
 \paragraph{Foundation models lead on single instances, not against ensembles.} The best single
 foundation model had the highest AUC on 8 of the 9 tasks where foundation models ran
 (Table~\ref{tab:best}), yet none was significantly better than the averaged predictions of 30
-untrained ShallowFBCSPNet instances, and the 8 significant differences all favoured the ensemble.
+untrained ShallowFBCSPNet instances, and the 7 significant differences all favoured the ensemble.
 Averaging the predictions of instances with different random weights reduces the variance that each
 random feature map adds to the probe's output; most of the gain arrived by $K = 5$--10
 (Fig.~\ref{fig:ensembles}). Scattering, a single deterministic transform, exceeded the best untrained
@@ -494,8 +506,8 @@ markers (sensorimotor rhythms, age-related slowing, alpha power), which time-ave
 coefficients summarize directly; this explanation is consistent with the data but was not tested
 here.
 Three features of our protocol may understate the foundation models. They were used frozen with
-mean-pooled features, whereas most were designed to be fine-tuned; BENDR's input scaling had to
-be assumed, and its features were nearly constant, so it could not be evaluated; and each model
+mean-pooled features, whereas most were designed to be fine-tuned; we could not reproduce
+BENDR's pretraining input, so it could not be evaluated; and each model
 received its pretraining sampling rate and channel set
 through resampling and channel selection that may differ from its pretraining pipeline. Our results
 therefore compare frozen representations under one linear readout. The comparison is also
@@ -518,8 +530,8 @@ one draw from a pretraining run, and its variability across pretraining seeds is
 foundation-model AUC is therefore subject to the same caution as a single-seed baseline, without a
 way to quantify it from public checkpoints.
 
-\paragraph{Clinical tasks near chance.} On depression, one test of 30 was significant, and only
-just (the median instance of the small 1D CNN on BDI with eyes closed, $p_\text{maxT} = 0.042$); on
+\paragraph{Clinical tasks near chance.} Depression is a null result: one test of 30 was
+significant, and only just (the median instance of the small 1D CNN on BDI with eyes closed, $p_\text{maxT} = 0.042$); on
 Parkinson's only EEGPT exceeded chance under the primary test, and its AUC depended on the probe
 (0.650 with nested $C$). These are the smallest samples in the study. For
 an AUC of 0.64 with 39 and 74 participants per group, the normal approximation of
@@ -529,6 +541,10 @@ intervals, and Signal-JEPA's AUC of 0.292 on Parkinson's shows that a single mod
 below chance on 31 participants. The ds002778 curators advise against patient-vs-control claims from
 that dataset alone; we report the Parkinson's results as a comparison between extractors on the same
 samples, not as a biomarker.
+On ds004504 the features carry the diagnosis, not the severity: regressing the MMSE score
+succeeded across all participants, where the diagnosis alone explains 74\,\% of its variance, but
+failed within patients for every extractor, including the Alzheimer's patients alone
+(Supplement, Table~\ref{tab:mmse}).
 
 \paragraph{Scope.} The conclusions hold for frozen features read out by a linear probe, with one
 preprocessing pipeline per model and one fixed cross-validation split for the main results (the
@@ -564,8 +580,9 @@ Alliance of Canada).}
 \setcounter{table}{0}
 \section*{Supplementary material}
 
-\paragraph{BENDR.} Table~\ref{tab:bendr} gives BENDR's AUCs. Its features were nearly constant
-across inputs (median SD across blocks 0.0004, against 0.2--0.9 for EEGPT and LaBraM), so it was
+\paragraph{BENDR.} Table~\ref{tab:bendr} gives BENDR's AUCs. We could not reproduce its
+pretraining input: with our input (per-channel min--max, an assumption) its features were nearly
+constant across inputs (median SD across blocks 0.0004, against 0.2--0.9 for EEGPT and LaBraM), so it was
 left out of the ensemble pools and of every test (Section~\ref{sec:extractors}).
 
 % results/phase1/<dataset>/metrics.csv, extractor bendr: fixed split, and SD over 30 CV splits.
@@ -704,6 +721,81 @@ Young vs old, EC & LaBraM (58\,\%, 1--4) & CodeBrain (35\,\%, 1--4) & EEGPT (3\,
 Young vs old, EO & EEGPT (45\,\%, 1--4) & CBraMod (41\,\%, 1--4) & EEG-DINO S (10\,\%, 1--6) \\
 Left vs right MI & Scattering (81\,\%, 1--2) & EEGPT (19\,\%, 1--3) & ShallowFBCSPNet (0\,\%, 3--5) \\
 Sleep staging & Small 1D CNN (95\,\%, 1--2) & Scattering (5\,\%, 1--2) & ShallowFBCSPNet (0\,\%, 3--3) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Choice of the reference ensembles.} The ShallowFBCSPNet and scattering ensembles were
+not fixed before the study. Table~\ref{tab:fmpools} gives the ensemble of every untrained network
+and the number of foundation models above it. The ShallowFBCSPNet ensemble had the highest AUC of
+the four untrained networks on 7 of the 9 tasks (exceptions: the 1D CNN ensemble on BDI with eyes closed and, by 0.0002,
+on age with eyes closed), so it is the hardest of them for the foundation
+models; against the weaker ensembles more foundation models score higher (no test).
+
+% results/stats/fm_vs_seeds.csv, ref_ensemble_auc and fm_auc (scripts/stats.py).
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{3pt}
+\caption{AUC of the ensemble of all instances (averaged predictions) of each untrained extractor,
+with the number of the 7 foundation models whose AUC is higher, and the best foundation model.
+$^a$Four foundation models were run on motor imagery.}
+\label{tab:fmpools}
+\begin{tabular}{@{}lllllll@{}}
+\toprule
+Task & 1D CNN & EEGNet & EEGNet, 3 ch. & Shallow & Scattering & Best FM \\
+\midrule
+Eyes closed vs open & 0.952 (5) & 0.934 (5) & 0.868 (7) & 0.977 (3) & 0.979 (3) & CodeBrain 0.984 \\
+BDI, eyes closed & 0.674 (1) & 0.584 (4) & 0.518 (5) & 0.591 (4) & 0.649 (3) & EEGPT 0.690 \\
+BDI, eyes open & 0.438 (6) & 0.595 (2) & 0.539 (2) & 0.615 (1) & 0.427 (6) & EEGPT 0.656 \\
+AD vs control & 0.770 (7) & 0.841 (5) & 0.778 (7) & 0.868 (2) & 0.858 (3) & LaBraM 0.912 \\
+FTD vs control & 0.783 (7) & 0.771 (7) & 0.642 (7) & 0.880 (2) & 0.877 (2) & CBraMod 0.912 \\
+PD vs control & 0.562 (5) & 0.446 (6) & 0.579 (5) & 0.604 (4) & 0.537 (6) & EEGPT 0.863 \\
+Young vs old, EC & 0.944 (4) & 0.902 (6) & 0.895 (6) & 0.944 (4) & 0.944 (4) & LaBraM 0.971 \\
+Young vs old, EO & 0.965 (3) & 0.947 (5) & 0.920 (6) & 0.972 (2) & 0.947 (5) & EEGPT 0.977 \\
+Left vs right MI$^a$ & 0.883 (0) & 0.864 (0) & 0.822 (1) & 0.902 (0) & 0.899 (0) & EEGPT 0.858 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Dementia severity (MMSE).} On ds004504 we also regressed the Mini-Mental State
+Examination score (0--30) on the same frozen features, one sample per participant: across all 88
+participants, across the 59 patients (Alzheimer's disease and FTD), and across the 36 Alzheimer's
+patients alone. Every control scores 30, so the first task largely repeats the diagnosis (the
+group alone explains 74\,\% of the MMSE variance); AD and FTD also differ in MMSE (24\,\% of the
+variance among patients), so the patient task partly repeats AD vs FTD, and the Alzheimer's task
+removes both. The probe was standardization and ridge regression with 5-fold cross-validation on
+the dataset's fixed split. Unlike the classifier's fixed $C = 1$, the ridge penalty was chosen in
+each training fold (leave-one-out over $10^{-2}, \dots, 10^{6}$), because $R^2$ depends on the scale
+of the predictions, which an unsuited penalty ruins. The primary test was the same as for
+classification: the median $R^2$ over instances against 10,000 refits on shuffled scores, max-$T$
+corrected over the extractors of each task. Under shuffled scores $R^2$ is well below 0, so a
+small positive $R^2$ can be significant. MMSE was predicted across all participants by 10 of 13
+extractors and by none within patients or within Alzheimer's patients, where every extractor's
+$R^2$ was below 0 (Table~\ref{tab:mmse}).
+
+% results/stats/regression_ds004504.csv, statistic median (scripts/regression.py).
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{MMSE regression on ds004504: median $R^2$ over instances and $p_\text{maxT}$ (10,000 refit
+permutations, max-$T$ per task).}
+\label{tab:mmse}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+& \multicolumn{2}{c}{All ($n = 88$)} & \multicolumn{2}{c}{Patients ($n = 59$)} & \multicolumn{2}{c}{AD only ($n = 36$)} \\
+Extractor & $R^2$ & $p_\text{maxT}$ & $R^2$ & $p_\text{maxT}$ & $R^2$ & $p_\text{maxT}$ \\
+\midrule
+Small 1D CNN & $0.082$ & 0.003 & $-0.090$ & 0.981 & $-0.103$ & 0.846 \\
+EEGNet & $-0.005$ & 0.076 & $-0.074$ & 0.953 & $-0.058$ & 0.604 \\
+EEGNet (3 ch.) & $-0.025$ & 0.400 & $-0.083$ & 0.968 & $-0.145$ & 0.891 \\
+ShallowFBCSPNet & $0.169$ & 0.001 & $-0.196$ & 0.998 & $-0.070$ & 0.669 \\
+Scattering & $0.179$ & 0.002 & $-0.183$ & 0.998 & $-0.108$ & 0.826 \\
+EEGNetv4 (pretrained) & $-0.105$ & 0.957 & $-0.131$ & 0.998 & $-0.082$ & 0.749 \\
+EEGPT & $0.031$ & 0.043 & $-0.194$ & 0.998 & $-0.178$ & 0.891 \\
+LaBraM & $0.205$ & 0.001 & $-0.189$ & 0.998 & $-0.081$ & 0.749 \\
+CBraMod & $0.149$ & 0.003 & $-0.122$ & 0.991 & $-0.106$ & 0.846 \\
+CodeBrain & $0.206$ & 0.002 & $-0.123$ & 0.991 & $-0.108$ & 0.846 \\
+EEG-DINO S & $0.060$ & 0.024 & $-0.228$ & 0.998 & $-0.118$ & 0.846 \\
+EEG-DINO M & $0.064$ & 0.023 & $-0.113$ & 0.984 & $-0.149$ & 0.891 \\
+Signal-JEPA & $0.212$ & 0.001 & $-0.156$ & 0.997 & $-0.017$ & 0.336 \\
 \bottomrule
 \end{tabular}
 \end{table}
