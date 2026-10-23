@@ -3,15 +3,19 @@
 For every dataset and task:
   above_chance   is the extractor's ensemble (averaged predictions of all its instances)
                  better than chance? Label permutation test of its AUC (10,000 permutations;
-                 for eyes closed vs open, labels are permuted within each participant)
+                 for eyes closed vs open, labels are permuted within each participant). A quick
+                 check only: the probes are not refit on the shuffled labels, so it is not a
+                 valid cross-validated permutation test and the paper does not use it
+                 (scripts/permutation.py is the primary test)
   vs_matched     pretrained checkpoints vs the untrained network of the same architecture and
                  input: two-sided Mann-Whitney U test between the checkpoints' AUCs and the
                  seeds' AUCs (is the checkpoint distinguishable from a random draw?)
-  vs_scattering  wavelet scattering (one AUC per scale J) vs each other extractor (one AUC per
-                 seed or checkpoint), Mann-Whitney U (only extractors with 3+ instances)
   fm_vs_ensemble each foundation model (one instance) vs the ensemble of untrained
                  ShallowFBCSPNet and of scattering (averaged predictions), on the same samples:
-                 paired permutation test of the AUC difference (scores swapped per sample)
+                 paired permutation test of the AUC difference (scores swapped per sample, or
+                 per participant where a participant has several samples: all of them together)
+Scattering is not tested against the other extractors: its scales J = 3..8 are a design choice,
+not a random sample of instances, so it is compared descriptively (its AUC range over J).
 Multi-class tasks (sleep staging) use the macro one-vs-rest AUC.
 
 Extractors in foundation.EXCLUDED (BENDR) are left out of every test.
@@ -24,8 +28,8 @@ weight-to-weight spread; they do not generalize over new participants.
 
 fm_vs_ensemble compares one FM instance with a 30-instance ensemble, which favours the ensemble
 by construction, so results/stats/fm_vs_seeds.csv also gives (no test) each FM's AUC against the
-single instances of the ShallowFBCSPNet and scattering: their mean, SD and the share it beats
-(ties count half), next to the ensemble's AUC.
+single instances of every untrained network and of scattering (not only the two tested
+references): their mean, SD and the share it beats (ties count half), next to the ensemble's AUC.
 
 Writes results/stats/stats.csv and fm_vs_seeds.csv, for the datasets of the paper (DATASETS;
 --datasets for others found in results/phase1/).
@@ -70,13 +74,15 @@ def label_nulls(y, scores, groups, rng):
     return obs, null
 
 
-def paired_nulls(y, pairs, rng):
+def paired_nulls(y, pairs, groups, rng):
     """|AUC(a) - AUC(b)| for each pair (a, b) of score vectors and its nulls, swapping a and b per
-    sample with the SAME random swaps for every pair: (observed (m,), null (N_PAIRED x m))."""
+    sample (per group if given: a group's samples are swapped together) with the SAME random swaps
+    for every pair: (observed (m,), null (N_PAIRED x m))."""
     obs = np.array([abs(auc_score(y, a) - auc_score(y, b)) for a, b in pairs])
+    member = np.unique(groups, return_inverse=True)[1] if groups is not None else np.arange(len(y))
     null = np.empty((N_PAIRED, len(pairs)))
     for k in range(N_PAIRED):
-        swap = rng.random(len(y)) < 0.5
+        swap = (rng.random(member.max() + 1) < 0.5)[member]
         for j, (a, b) in enumerate(pairs):
             sw = swap[:, None] if a.ndim == 2 else swap
             null[k, j] = abs(auc_score(y, np.where(sw, b, a)) - auc_score(y, np.where(sw, a, b)))
@@ -129,14 +135,15 @@ for d in [REPO / "results" / "phase1" / ds for ds in args.datasets]:
                              auc_a=o, auc_b=0.5, n_a=n, n_b=0, p=p, p_maxt=pm))
         pairs = [(fm, ref) for fm in FOUNDATION if fm in ens for ref in ("shallow", "scattering") if ref in ens]
         if pairs:  # each FM vs the ensembles, every pair on the same random swaps
-            obs, null = paired_nulls(y, [(ens[a][2], ens[b][2]) for a, b in pairs], rng)
+            obs, null = paired_nulls(y, [(ens[a][2], ens[b][2]) for a, b in pairs], groups, rng)
             for (a, b), p, pm in zip(pairs, raw_p(obs, null), maxt(null, obs)):
                 rows.append(dict(test="fm_vs_ensemble", dataset=ds, task=task, a=a, b=b,
                                  auc_a=auc_score(y, ens[a][2]), auc_b=auc_score(y, ens[b][2]),
                                  n_a=1, n_b=ens[b][3], p=p, p_maxt=pm))
+        refs = sorted(mt[mt.group.isin(["untrained", "wavelet"])].extractor.unique())
         for fm in [e for e in FOUNDATION if e in ens]:
-            for ref in ("shallow", "scattering"):
-                if ref in auc:  # descriptive: the FM against single instances, then the ensemble
+            for ref in refs:
+                if ref in ens:  # descriptive: the FM against single instances, then the ensemble
                     v = auc[ref]
                     beaten = ((auc[fm][0] > v).sum() + 0.5 * (auc[fm][0] == v).sum()) / len(v)
                     seed_rows.append(dict(dataset=ds, task=task, fm=fm, ref=ref, fm_auc=auc[fm][0],
@@ -147,13 +154,6 @@ for d in [REPO / "results" / "phase1" / ds for ds in args.datasets]:
                 p = mannwhitneyu(auc[pre], auc[unt], alternative="two-sided").pvalue
                 rows.append(dict(test="vs_matched", dataset=ds, task=task, a=pre, b=unt, auc_a=auc[pre].mean(),
                                  auc_b=auc[unt].mean(), n_a=len(auc[pre]), n_b=len(auc[unt]), p=p))
-        if "scattering" in auc:
-            for e, v in auc.items():
-                if e != "scattering" and len(v) >= 3:
-                    p = mannwhitneyu(auc["scattering"], v, alternative="two-sided").pvalue
-                    rows.append(dict(test="vs_scattering", dataset=ds, task=task, a="scattering", b=e,
-                                     auc_a=auc["scattering"].mean(), auc_b=v.mean(),
-                                     n_a=len(auc["scattering"]), n_b=len(v), p=p))
     print(f"{ds}: {sum(r['dataset'] == ds for r in rows)} tests", flush=True)
 
 s = pd.DataFrame(rows)
