@@ -105,7 +105,7 @@ for name in sorted(args.extractors, key=variants.get):  # one variant at a time
     group, _, subset = EXTRACTORS[name]
     variant = variants[name]
     if name in cfg.get("exclude", {}).get("extractors", []):
-        print(f"{name}: skipped, trained on this dataset (leakage)", flush=True)
+        print(f"{name}: skipped, {cfg['exclude']['reason']}", flush=True)
         continue
     have = {c.upper() for c in cfg["channels"]}
     known = variant == "standard" or variant in cfg.get("preprocessing", {}) or variant in COMMON_VARIANTS

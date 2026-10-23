@@ -52,7 +52,10 @@ FOUNDATION = {  # key: class, repo, sfreq, channels, window_s (None = the datase
 VARIANT = {200: "fm200", 250: "fm250", 256: "fm256", 128: "fm128"}  # sampling rate -> preprocessing variant
 # Extracted but left out of the ensemble pools and of every test family, for a reason found on the
 # features themselves (not on the results); their AUCs are still reported (docs/pretrained_models.md)
-EXCLUDED = {"bendr": "near-constant features (median SD across blocks 0.0004, 0.2-0.9 for EEGPT and LaBraM)"}
+# BENDR: we could not reproduce its pretraining input (undocumented scaling), and its features
+# were nearly constant; this says nothing about BENDR itself.
+EXCLUDED = {"bendr": "input not reproduced: near-constant features (median SD across blocks 0.0004, "
+                     "0.2-0.9 for EEGPT and LaBraM)"}
 # Models whose features are (batch, tokens, dim): "channels" = channel-major tokens
 # (channels * patches), averaged over each channel's patches; "time" = time tokens, averaged.
 # Others return (batch, channels, patches, dim), averaged over patches, or (batch, dim).
