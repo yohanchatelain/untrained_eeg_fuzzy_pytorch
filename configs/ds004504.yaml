@@ -43,7 +43,9 @@ tasks:
 # Regression tasks (scripts/regression.py): predict the participants.tsv column MMSE (Mini-Mental
 # State Examination, 0-30, lower = more impaired). Every control scores 30, so `mmse` over all
 # participants mostly repeats the patient vs control split; `mmse_patients` (Alzheimer's and FTD
-# only, 59 participants) asks for dementia severity.
+# only, 59 participants) asks for dementia severity; AD and FTD differ in MMSE, so `mmse_ad`
+# (Alzheimer's only, 36) asks it without the AD vs FTD difference.
 regression:
   mmse: {column: MMSE}
   mmse_patients: {column: MMSE, where: {Group: [A, F]}}
+  mmse_ad: {column: MMSE, where: {Group: [A]}}

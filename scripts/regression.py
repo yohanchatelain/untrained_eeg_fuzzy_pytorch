@@ -19,12 +19,14 @@ min-P), per task and statistic. Extractors in foundation.EXCLUDED (BENDR) are le
 
 Writes results/phase1/<dataset>/regression_metrics.csv (one row per instance and task), and with
 --permutations results/stats/regression_<dataset>.csv and its nulls in
-results/stats/nulls_regression_<dataset>/ (one file per test, reused if the job is resubmitted).
+results/stats/nulls_regression_<dataset>/ (one file per test, reused if the job is resubmitted, but
+only if their fingerprint matches: features, scores, folds, penalties and permutation count).
     python scripts/regression.py --config configs/ds004504.yaml        (instances only, minutes)
     CONFIG=configs/ds004504.yaml ARGS="--permutations 10000" sbatch slurm/regression.sh
 """
 
 import argparse
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -66,6 +68,15 @@ def instance_stats(Xs, y, cfg):
     preds = [predict(X, y, cfg) for X in Xs]
     r2 = [r2_score(y, p) for p in preds]
     return r2_score(y, np.mean(preds, axis=0)), np.median(r2), np.max(r2)
+
+
+def null_key(Xs, y, cfg, n):
+    """Fingerprint of everything a null depends on, so changed features or settings are not
+    silently answered with old nulls."""
+    h = hashlib.sha256()
+    for a in (*Xs, y, ALPHAS, [cfg["cv_folds"], cfg["cv_seed"], n]):
+        h.update(np.ascontiguousarray(a, dtype=float).tobytes())
+    return h.hexdigest()
 
 
 def null_stats(Xs, y, cfg, seeds):
@@ -115,15 +126,16 @@ rows = []
 for ext_dir in ext_dirs:
     files = [np.load(p) for p in sorted(ext_dir.glob("*.npz"))]
     for task, column in targets.items():
-        path = nulls / f"{ext_dir.name}__{task}.npy"
-        if not path.exists() or len(np.load(path)) != args.permutations:
-            Xs, y = zip(*(task_data(f, column) for f in files))
+        path = nulls / f"{ext_dir.name}__{task}.npz"
+        Xs, y = zip(*(task_data(f, column) for f in files))
+        key = null_key(Xs, y[0], cfg, args.permutations)
+        if not path.exists() or str(np.load(path)["key"]) != key:
             chunk = max(1, min(50, args.permutations // (10 * args.workers)))
             parts = Parallel(n_jobs=args.workers)(
                 delayed(null_stats)(Xs, y[0], cfg, range(s, min(s + chunk, args.permutations)))
                 for s in range(0, args.permutations, chunk))
-            np.save(path, np.concatenate([np.array(p) for p in parts]))
-        null = np.load(path)
+            np.savez(path, null=np.concatenate([np.array(p) for p in parts]), key=key)
+        null = np.load(path)["null"]
         for i, stat in enumerate(STATS):
             obs = observed[ext_dir.name, task][i]
             rows.append(dict(dataset=ds, task=task, extractor=ext_dir.name, statistic=stat, instances=len(files),
@@ -135,7 +147,7 @@ for ext_dir in ext_dirs:
 out = pd.DataFrame(rows)
 for (stat, task), g in out.groupby(["statistic", "task"]):  # joint nulls: same shuffles at each permutation
     col = STATS.index(stat)
-    null = np.column_stack([np.load(nulls / f"{e}__{task}.npy")[:, col] for e in g.extractor])
+    null = np.column_stack([np.load(nulls / f"{e}__{task}.npz")["null"][:, col] for e in g.extractor])
     out.loc[g.index, "p_maxt"] = maxt(null, g.r2.to_numpy())
 out["significant"] = out.p_maxt < 0.05
 dest = Path(cfg["results_dir"]) / "stats" / f"regression_{ds}.csv"
