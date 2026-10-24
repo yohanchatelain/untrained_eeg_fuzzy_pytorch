@@ -54,7 +54,7 @@ EXTRACTORS = {  # extractor: axis label, top to bottom within each kind
     "eegnetv4": "EEGNetv4 (pretr.)", "shallow_pretrained": "Shallow (pretr.)",
     "eegpt": "EEGPT", "labram": "LaBraM", "cbramod": "CBraMod",  # BENDR: left out of the analyses
     "codebrain": "CodeBrain", "eegdino_small": "EEG-DINO S", "eegdino_medium": "EEG-DINO M",
-    "signal_jepa": "Signal-JEPA",
+    "signal_jepa": "Signal-JEPA", "reve_base": "REVE base", "reve_large": "REVE large",
 }
 TEXT, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 plt.rcParams.update({"font.size": 7, "axes.edgecolor": MUTED, "axes.labelcolor": TEXT,
