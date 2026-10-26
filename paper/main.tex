@@ -80,7 +80,7 @@ the uncertainty of a cross-validated AUC is of the same order as the differences
 training process, whose variability is usually unknown.
 
 We compare four kinds of frozen feature extractors: untrained convolutional networks (30 seeds
-each), wavelet scattering, pretrained convolutional networks and nine foundation models (a tenth, BENDR, was left out: we could not reproduce its
+each), wavelet scattering, pretrained convolutional networks and ten foundation models (an eleventh, BENDR, was left out: we could not reproduce its
 pretraining input). Each is
 read out by the same logistic-regression probe on ten classification tasks from six open datasets.
 The design isolates the pretrained weights by pairing each pretrained network with untrained copies
@@ -208,7 +208,9 @@ open and load in braindecode~1.8.1: EEGPT \citep{wang2024eegpt}, LaBraM \citep{j
 BENDR \citep{kostas2021bendr}, CBraMod \citep{wang2025cbramod}, CodeBrain \citep{ma2026codebrain},
 EEG-DINO small and medium \citep{wang2025eegdino}, Signal-JEPA \citep{guetschel2024sjepa}, and
 REVE base and large \citep{elouahidi2025reve} (its authors' weights, open since September 2026 under
-a responsible-use license). Models needing braindecode's development version (MIRepNet, BrainOmni)
+a responsible-use license), and the EEG encoder of Neuro-GPT \citep{cui2024neurogpt} (its authors'
+weights, loaded into braindecode's EEG Conformer with the original attention scaling; its GPT,
+used only for pretraining, was left out). Models needing braindecode's development version (MIRepNet, BrainOmni)
 and models whose pretraining corpus we could not check were not used. No model was evaluated on a
 dataset in its pretraining data: REVE's corpus includes ds002778, so REVE was not run on it. Each model received its pretraining sampling rate, channel set and window
 (30-s windows for CodeBrain; 256~Hz for EEGPT, as in the authors' code, where braindecode's model
@@ -217,7 +219,12 @@ were not run on BNCI2014\_001, and no foundation model was run on Sleep-EDF's tw
 derivations. Features were averaged over time patches, keeping channels. EEGPT received millivolts,
 as in the authors' pretraining script; REVE received every channel at 200~Hz, placed by its
 electrode position bank, z-scored over the participant's recording and clipped at 15~SD, as in its
-pretraining; BENDR's input scaling is not documented and was assumed
+pretraining. Neuro-GPT's encoder received the 22 channels of its pretraining at 250~Hz, those a
+dataset lacks interpolated with spherical splines from the recorded ones (3 of 22 on most datasets,
+but 17 on BNCI2014\_001, whose 22 channels cover the motor cortex only; its authors mapped this
+dataset onto their montage too), re-referenced to their average and z-scored over the participant's
+recording, as in its pretraining; its features are the embedding of each 2-s window that its GPT
+reads (27 time tokens of 40 values, not averaged). BENDR's input scaling is not documented and was assumed
 (per-channel min--max). Each foundation model is a single instance. We could not reproduce BENDR's
 pretraining input: with ours its features were nearly constant across inputs (median SD across
 blocks 0.0004, against 0.2--0.9 for EEGPT and LaBraM), which more likely reflects our input
@@ -227,7 +234,7 @@ Table~\ref{tab:bendr}.
 
 \paragraph{Feature counts.} The extractors give very different numbers of features: 64 for the
 small 1D CNN, 128 for EEGNet, 440 for ShallowFBCSPNet (1,080 with the BCI~IV~2a input), 1,216 to
-3,200 for Signal-JEPA, 2,048 for EEGPT, 9,728 to 74,176 for REVE, 3,800 to 12,200 for the other
+3,200 for Signal-JEPA, 2,048 for EEGPT, 1,080 for Neuro-GPT, 9,728 to 74,176 for REVE, 3,800 to 12,200 for the other
 foundation models and 456 to 14,274 for scattering, depending on the scale and the number of channels.
 
 \paragraph{Feature aggregation.} Window features were averaged within each 1-min block or 60-s
@@ -355,7 +362,7 @@ Table~\ref{tab:best} lists, for each task, the best extractor of each group (mea
 instances; foundation models are single instances). The best single foundation model scored
 highest on all 9 tasks where foundation models could be run, on motor imagery by 0.003 only
 (REVE base 0.878, scattering 0.875). Scattering exceeded the best untrained
-CNN on 7 of 10 tasks. The foundation-model column reports the maximum over nine models, whereas
+CNN on 7 of 10 tasks. The foundation-model column reports the maximum over ten models, whereas
 the other columns report means over instances, which favours the foundation-model column.
 
 % results/phase1/<dataset>/metrics.csv, cv_seed 0: mean AUC over instances, best per group.
@@ -382,16 +389,17 @@ Sleep-EDF & 5-stage (macro) & Small 1D CNN 0.935 & 0.929 & -- & -- \\
 \end{table}
 
 The depression and Parkinson's tasks were near chance for most extractors. With the primary test,
-91 of the 137 extractor $\times$ task tests were significant: all 13 on motor imagery, all 30 on
-age, 29 of 30 on dementia, 18 of 51 on ds003478 and 1 of 13 on Parkinson's. On ds003478, 17 of
-the 18 are on eyes closed vs open. We report depression as a null result: the eighteenth is the
-only significant test of 34 on depression, and it is borderline: the small 1D CNN on BDI with eyes closed (median instance AUC 0.644, $p = 0.0036$,
-$p_\text{maxT} = 0.044$). For the same extractor and task, the ensemble ($p_\text{maxT} = 0.099$)
-and best-instance (0.26) statistics were not significant, nor was EEGPT, the best single model on
-this task (AUC 0.690, $p_\text{maxT} = 0.073$). Nothing was significant on BDI with eyes open. The
-ensemble and best-instance statistics otherwise agreed with the median, except EEGNet and the
-EEGNetv4 checkpoints on FTD (significant for the ensemble and the median, not for the best
-instance). On Parkinson's only EEGPT was significant (AUC 0.863, $p_\text{maxT} = 0.024$), while
+97 of the 146 extractor $\times$ task tests were significant: all 14 on motor imagery, all 32 on
+age, 31 of 32 on dementia, 19 of 54 on ds003478 and 1 of 14 on Parkinson's. On ds003478, 18 of
+the 19 are on eyes closed vs open. We report depression as a null result: the nineteenth is the
+only significant test of 36 on depression, and it is borderline: the small 1D CNN on BDI with eyes closed (median instance AUC 0.644, $p = 0.0036$,
+$p_\text{maxT} = 0.048$). For the same extractor and task, the ensemble ($p_\text{maxT} = 0.11$)
+and best-instance (0.27) statistics were not significant, nor was EEGPT, the best single model on
+this task (AUC 0.690, $p_\text{maxT} = 0.078$). Nothing was significant on BDI with eyes open. The
+ensemble and best-instance statistics otherwise agreed with the median, except on FTD for EEGNet
+(significant for the ensemble and the median, not for the best instance), the EEGNetv4 checkpoints
+(the median only) and Neuro-GPT (AUC 0.700; $p_\text{maxT} = 0.041$ for the median, 0.055 and 0.072
+for the other two statistics, whose correction families differ). On Parkinson's only EEGPT was significant (AUC 0.863, $p_\text{maxT} = 0.026$), while
 Signal-JEPA scored well below chance (0.292); with $n = 31$ these results should be read with care.
 Signal-JEPA's inversion is stable across 30 cross-validation splits (mean 0.26) and under both
 alternative probes (0.28 and 0.34), so it is not an effect of weak regularization.
@@ -441,8 +449,8 @@ EEGNet and ShallowFBCSPNet $C = 0.1$. The comparisons above held under both alte
 largest matched gap was 0.055 with $C = 1$, 0.042 with PCA and 0.028 with nested $C$. The best
 foundation model's AUC minus that of the 30-seed ShallowFBCSPNet ensemble stayed between $-0.037$
 and $+0.099$ on every task except Parkinson's, under all three probes. On Parkinson's EEGPT reached
-0.863 with $C = 1$ and 0.879 with PCA but 0.650 with nested $C$, whose inner folds hold about five
-participants: this result depends on the probe (Table~\ref{tab:probes}).
+0.863 with $C = 1$ and 0.879 with PCA but 0.650 with nested $C$ (where Neuro-GPT, 0.679, was the best
+foundation model); the inner folds of nested $C$ hold about five participants: this result depends on the probe (Table~\ref{tab:probes}).
 
 \subsection{Single-instance results are unstable}
 Variability across random initializations was as large as or larger than the effects of interest.
@@ -458,13 +466,13 @@ with most of the gain reached by $K \approx 5$--10 (Fig.~\ref{fig:ensembles}). O
 averaging the 30 untrained ShallowFBCSPNet seeds raised the AUC from 0.808 (mean single seed) to
 0.861 at $K = 5$, 0.875 at $K = 10$ and 0.880 at $K = 30$, against 0.916 for the best foundation
 model (REVE base). On the nine tasks with foundation models, no foundation model was significantly
-better than the 30-seed ShallowFBCSPNet ensemble ($p_\text{maxT}$ from 0.075 to 1 where the
-foundation model scored higher, the lowest for EEGPT on Parkinson's); the 7 significant
+better than the 30-seed ShallowFBCSPNet ensemble ($p_\text{maxT}$ from 0.086 to 1 where the
+foundation model scored higher, the lowest for EEGPT on Parkinson's); the 11 significant
 differences all favoured the ensemble (EEGPT on motor imagery, 0.858 vs 0.902, was not significant
 once the swaps kept each subject's trials together: $p_\text{maxT} = 0.46$). Against the scattering ensemble, four foundation-model
-results were significantly better: EEGPT on Parkinson's ($p_\text{maxT} = 0.012$), EEGPT and
+results were significantly better: EEGPT on Parkinson's ($p_\text{maxT} = 0.013$), EEGPT and
 LaBraM on BDI with eyes open, where scattering is below chance (AUC 0.427; $p_\text{maxT} = 0.005$
-and 0.011), and CodeBrain on age with eyes closed (0.969 vs 0.944, $p_\text{maxT} = 0.048$). With 52--65 participants on the dementia tasks, this means that the
+and 0.012), and CodeBrain on age with eyes closed (0.969 vs 0.944, $p_\text{maxT} = 0.048$). With 52--65 participants on the dementia tasks, this means that the
 foundation models and the untrained ensemble cannot be told apart at these sample sizes, not that
 they are equivalent.
 
@@ -497,7 +505,7 @@ about networks of the same size pretrained on large corpora, which we did not te
 \paragraph{Foundation models lead on single instances, not against ensembles.} The best single
 foundation model had the highest AUC on all 9 tasks where foundation models ran
 (Table~\ref{tab:best}), yet none was significantly better than the averaged predictions of 30
-untrained ShallowFBCSPNet instances, and the 7 significant differences all favoured the ensemble.
+untrained ShallowFBCSPNet instances, and the 11 significant differences all favoured the ensemble.
 Averaging the predictions of instances with different random weights reduces the variance that each
 random feature map adds to the probe's output; most of the gain arrived by $K = 5$--10
 (Fig.~\ref{fig:ensembles}). Scattering, a single deterministic transform, exceeded the best untrained
@@ -514,17 +522,17 @@ received its pretraining sampling rate and channel set
 through resampling and channel selection that may differ from its pretraining pipeline. Our results
 therefore compare frozen representations under one linear readout. The comparison is also
 asymmetric in the other direction: the foundation-model column of Table~\ref{tab:best} takes the
-maximum over nine models chosen after the fact, while the other columns average over instances.
+maximum over ten models chosen after the fact, while the other columns average over instances.
 
 \paragraph{One seed is not a baseline.} On BDI with eyes closed, the AUC of single EEGNet seeds
 ranged from 0.435 to 0.680, and on Parkinson's single 1D CNN seeds ranged from 0.379 to 0.871. A
 study that reports one random initialization can therefore obtain almost any result in that range,
 and a pretrained model compared with it can appear better or worse by chance. The choice of test
 mattered as well. For the 30-seed 1D CNN ensemble on BDI with eyes closed, a label permutation that
-did not refit the probe gave $p_\text{maxT} = 0.014$, while the refit permutation of the same
+did not refit the probe gave $p_\text{maxT} = 0.016$, while the refit permutation of the same
 ensemble, which accounts for the probes having been fitted on the true labels \citep{ojala2010},
-gave 0.099. The refit test of its median instance was borderline (0.044) and that of its best
-instance was not significant (0.26). We suggest reporting untrained baselines as a distribution over seeds or as an ensemble, and
+gave 0.11. The refit test of its median instance was borderline (0.048) and that of its best
+instance was not significant (0.27). We suggest reporting untrained baselines as a distribution over seeds or as an ensemble, and
 testing them with a refit permutation over all instances. The same reasoning applies to pretrained
 models, whose variability we could measure only partly. The EEGNetv4 checkpoints vary in their
 pretraining data as well as their seed, so their spread mixes two sources; each foundation model is
@@ -532,8 +540,8 @@ one draw from a pretraining run, and its variability across pretraining seeds is
 foundation-model AUC is therefore subject to the same caution as a single-seed baseline, without a
 way to quantify it from public checkpoints.
 
-\paragraph{Clinical tasks near chance.} Depression is a null result: one test of 34 was
-significant, and only just (the median instance of the small 1D CNN on BDI with eyes closed, $p_\text{maxT} = 0.044$); on
+\paragraph{Clinical tasks near chance.} Depression is a null result: one test of 36 was
+significant, and only just (the median instance of the small 1D CNN on BDI with eyes closed, $p_\text{maxT} = 0.048$); on
 Parkinson's only EEGPT exceeded chance under the primary test, and its AUC depended on the probe
 (0.650 with nested $C$). These are the smallest samples in the study. For
 an AUC of 0.64 with 39 and 74 participants per group, the normal approximation of
@@ -559,7 +567,7 @@ evaluated with untrained networks and scattering only.
 
 On these ten tasks, a frozen untrained network averaged over a few dozen random initializations
 reached AUCs that no foundation model exceeded significantly, and a fixed wavelet transform was
-significantly exceeded in 4 of 76 comparisons with foundation models. Pretrained
+significantly exceeded in 4 of 85 comparisons with foundation models. Pretrained
 EEG models should therefore be compared with untrained instances of their own architecture and with
 scattering, and every such comparison should report the variability across instances.
 
@@ -634,7 +642,7 @@ BDI, eyes closed & $+0.033$ & $+0.016$ & $+0.006$ & $+0.099$ & $+0.076$ & $+0.06
 BDI, eyes open & $+0.018$ & $-0.012$ & $+0.003$ & $+0.041$ & $+0.028$ & $+0.008$ \\
 AD vs control & $+0.052$ & $+0.032$ & $+0.003$ & $+0.044$ & $+0.032$ & $+0.012$ \\
 FTD vs control & $+0.055$ & $+0.035$ & $+0.028$ & $+0.036$ & $+0.070$ & $+0.025$ \\
-PD vs control & $+0.015$ & $+0.040$ & $-0.005$ & $+0.258$ & $+0.238$ & $+0.075$ \\
+PD vs control & $+0.015$ & $+0.040$ & $-0.005$ & $+0.258$ & $+0.238$ & $+0.104$ \\
 Young vs old, EC & $+0.007$ & $+0.012$ & $+0.004$ & $+0.027$ & $+0.022$ & $+0.024$ \\
 Young vs old, EO & $+0.004$ & $-0.001$ & $+0.001$ & $+0.005$ & $+0.001$ & $-0.001$ \\
 Left vs right MI & $+0.021$ & $+0.042$ & $+0.028$ & $-0.024$ & $-0.037$ & $-0.024$ \\
@@ -666,6 +674,7 @@ EEG-DINO M & 97 & 100 & 10 & 43 & 40 & 77 & 80 & 43 & -- \\
 Signal-JEPA & 0 & 13 & 20 & 62 & 90 & 0 & 0 & 0 & 0 \\
 REVE base & 100 & 90 & 47 & 90 & 100 & -- & 100 & 93 & 100 \\
 REVE large & 100 & 90 & 48 & 90 & 97 & -- & 100 & 90 & 100 \\
+Neuro-GPT & 43 & 50 & 30 & 3 & 0 & 90 & 3 & 0 & 0 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -696,6 +705,7 @@ EEGNetv4 & 0.769 & 0.120 & 0.786 \\
 EEGNet, 3 ch & 0.759 & 0.113 & 0.773 \\
 LaBraM & 0.754 & 0.130 & 0.765 \\
 EEGNet & 0.754 & 0.094 & 0.763 \\
+Neuro-GPT & 0.717 & 0.080 & 0.723 \\
 Signal-JEPA & 0.692 & 0.093 & 0.697 \\
 CBraMod & 0.684 & 0.080 & 0.686 \\
 \bottomrule
@@ -720,11 +730,11 @@ interval.}
 Task & First & Second & Third \\
 \midrule
 Eyes closed vs open & REVE base (70\,\%, 1--6) & REVE large (3\,\%, 1--8) & CodeBrain (15\,\%, 1--5) \\
-BDI, eyes closed & EEGPT (49\,\%, 1--7) & EEG-DINO M (22\,\%, 1--9) & EEG-DINO S (10\,\%, 1--10) \\
-BDI, eyes open & EEGPT (65\,\%, 1--6) & LaBraM (10\,\%, 1--11) & Shallow, 2a input (8\,\%, 1--10) \\
+BDI, eyes closed & EEGPT (49\,\%, 1--7) & EEG-DINO M (21\,\%, 1--9) & EEG-DINO S (10\,\%, 1--11) \\
+BDI, eyes open & EEGPT (64\,\%, 1--6) & LaBraM (9\,\%, 1--11) & Shallow, 2a input (8\,\%, 1--11) \\
 AD vs control & LaBraM (59\,\%, 1--5) & REVE large (11\,\%, 1--6) & REVE base (13\,\%, 1--8) \\
 FTD vs control & REVE base (34\,\%, 1--4) & CBraMod (33\,\%, 1--7) & CodeBrain (13\,\%, 1--7) \\
-PD vs control & EEGPT (98\,\%, 1--1) & EEG-DINO M (2\,\%, 2--10) & LaBraM (0\,\%, 2--10) \\
+PD vs control & EEGPT (88\,\%, 1--2) & Neuro-GPT (10\,\%, 1--11) & EEG-DINO M (1\,\%, 2--11) \\
 Young vs old, EC & LaBraM (35\,\%, 1--5) & CodeBrain (26\,\%, 1--5) & REVE base (32\,\%, 1--6) \\
 Young vs old, EO & EEGPT (43\,\%, 1--5) & CBraMod (37\,\%, 1--5) & REVE base (3\,\%, 1--8) \\
 Left vs right MI & REVE base (55\,\%, 1--3) & Scattering (36\,\%, 1--4) & REVE large (4\,\%, 1--4) \\
@@ -744,19 +754,19 @@ models; against the weaker ensembles more foundation models score higher (no tes
 \begin{table}[h]
 \centering\footnotesize\setlength{\tabcolsep}{3pt}
 \caption{AUC of the ensemble of all instances (averaged predictions) of each untrained extractor,
-with the number of the 9 foundation models whose AUC is higher, and the best foundation model.
-$^a$Seven foundation models were run on Parkinson's (not REVE). $^b$Six on motor imagery.}
+with the number of the 10 foundation models whose AUC is higher, and the best foundation model.
+$^a$Eight foundation models were run on Parkinson's (not REVE). $^b$Seven on motor imagery.}
 \label{tab:fmpools}
 \begin{tabular}{@{}lllllll@{}}
 \toprule
 Task & 1D CNN & EEGNet & EEGNet, 3 ch. & Shallow & Scattering & Best FM \\
 \midrule
-Eyes closed vs open & 0.952 (7) & 0.934 (7) & 0.868 (9) & 0.977 (5) & 0.979 (5) & REVE base 0.989 \\
-BDI, eyes closed & 0.674 (1) & 0.584 (6) & 0.518 (7) & 0.591 (6) & 0.649 (3) & EEGPT 0.690 \\
-BDI, eyes open & 0.438 (8) & 0.595 (2) & 0.539 (4) & 0.615 (1) & 0.427 (8) & EEGPT 0.656 \\
+Eyes closed vs open & 0.952 (7) & 0.934 (8) & 0.868 (10) & 0.977 (5) & 0.979 (5) & REVE base 0.989 \\
+BDI, eyes closed & 0.674 (1) & 0.584 (6) & 0.518 (8) & 0.591 (6) & 0.649 (3) & EEGPT 0.690 \\
+BDI, eyes open & 0.438 (9) & 0.595 (2) & 0.539 (5) & 0.615 (1) & 0.427 (9) & EEGPT 0.656 \\
 AD vs control & 0.770 (9) & 0.841 (7) & 0.778 (9) & 0.868 (4) & 0.858 (5) & LaBraM 0.912 \\
-FTD vs control & 0.783 (9) & 0.771 (9) & 0.642 (9) & 0.880 (4) & 0.877 (4) & REVE base 0.916 \\
-PD vs control$^a$ & 0.562 (5) & 0.446 (6) & 0.579 (5) & 0.604 (4) & 0.537 (6) & EEGPT 0.863 \\
+FTD vs control & 0.783 (9) & 0.771 (9) & 0.642 (10) & 0.880 (4) & 0.877 (4) & REVE base 0.916 \\
+PD vs control$^a$ & 0.562 (6) & 0.446 (7) & 0.579 (6) & 0.604 (5) & 0.537 (7) & EEGPT 0.863 \\
 Young vs old, EC & 0.944 (6) & 0.902 (8) & 0.895 (8) & 0.944 (6) & 0.944 (6) & LaBraM 0.971 \\
 Young vs old, EO & 0.965 (3) & 0.947 (7) & 0.920 (8) & 0.972 (2) & 0.947 (7) & EEGPT 0.977 \\
 Left vs right MI$^b$ & 0.883 (0) & 0.864 (2) & 0.822 (3) & 0.902 (0) & 0.899 (0) & REVE base 0.878 \\
@@ -776,7 +786,7 @@ each training fold (leave-one-out over $10^{-2}, \dots, 10^{6}$), because $R^2$ 
 of the predictions, which an unsuited penalty ruins. The primary test was the same as for
 classification: the median $R^2$ over instances against 10,000 refits on shuffled scores, max-$T$
 corrected over the extractors of each task. Under shuffled scores $R^2$ is well below 0, so a
-small positive $R^2$ can be significant. MMSE was predicted across all participants by 12 of 15
+small positive $R^2$ can be significant. MMSE was predicted across all participants by 13 of 16
 extractors and by none within patients or within Alzheimer's patients, where every extractor's
 $R^2$ was below 0 (Table~\ref{tab:mmse}).
 
@@ -791,21 +801,22 @@ permutations, max-$T$ per task).}
 & \multicolumn{2}{c}{All ($n = 88$)} & \multicolumn{2}{c}{Patients ($n = 59$)} & \multicolumn{2}{c}{AD only ($n = 36$)} \\
 Extractor & $R^2$ & $p_\text{maxT}$ & $R^2$ & $p_\text{maxT}$ & $R^2$ & $p_\text{maxT}$ \\
 \midrule
-Small 1D CNN & $0.082$ & 0.003 & $-0.090$ & 0.983 & $-0.103$ & 0.860 \\
-EEGNet & $-0.005$ & 0.076 & $-0.074$ & 0.956 & $-0.058$ & 0.624 \\
-EEGNet (3 ch.) & $-0.025$ & 0.400 & $-0.083$ & 0.970 & $-0.145$ & 0.925 \\
-ShallowFBCSPNet & $0.169$ & 0.001 & $-0.196$ & 0.998 & $-0.070$ & 0.683 \\
-Scattering & $0.179$ & 0.002 & $-0.183$ & 0.998 & $-0.108$ & 0.840 \\
-EEGNetv4 (pretrained) & $-0.105$ & 0.957 & $-0.131$ & 0.998 & $-0.082$ & 0.762 \\
-EEGPT & $0.031$ & 0.043 & $-0.194$ & 0.998 & $-0.178$ & 0.925 \\
-LaBraM & $0.205$ & 0.001 & $-0.189$ & 0.998 & $-0.081$ & 0.762 \\
-CBraMod & $0.149$ & 0.003 & $-0.122$ & 0.992 & $-0.106$ & 0.860 \\
-CodeBrain & $0.206$ & 0.002 & $-0.123$ & 0.992 & $-0.108$ & 0.860 \\
-EEG-DINO S & $0.060$ & 0.024 & $-0.228$ & 0.998 & $-0.118$ & 0.869 \\
-EEG-DINO M & $0.064$ & 0.023 & $-0.113$ & 0.986 & $-0.149$ & 0.925 \\
-Signal-JEPA & $0.212$ & 0.001 & $-0.156$ & 0.998 & $-0.017$ & 0.357 \\
-REVE base & $0.198$ & 0.003 & $-0.161$ & 0.998 & $-0.334$ & 0.944 \\
-REVE large & $0.192$ & 0.003 & $-0.083$ & 0.939 & $-0.064$ & 0.656 \\
+Small 1D CNN & $0.082$ & 0.003 & $-0.090$ & 0.983 & $-0.103$ & 0.880 \\
+EEGNet & $-0.005$ & 0.076 & $-0.074$ & 0.956 & $-0.058$ & 0.642 \\
+EEGNet (3 ch.) & $-0.025$ & 0.400 & $-0.083$ & 0.970 & $-0.145$ & 0.953 \\
+ShallowFBCSPNet & $0.169$ & 0.001 & $-0.196$ & 0.998 & $-0.070$ & 0.700 \\
+Scattering & $0.179$ & 0.002 & $-0.183$ & 0.998 & $-0.108$ & 0.857 \\
+EEGNetv4 (pretrained) & $-0.105$ & 0.957 & $-0.131$ & 0.998 & $-0.082$ & 0.778 \\
+EEGPT & $0.031$ & 0.043 & $-0.194$ & 0.998 & $-0.178$ & 0.953 \\
+LaBraM & $0.205$ & 0.001 & $-0.189$ & 0.998 & $-0.081$ & 0.779 \\
+CBraMod & $0.149$ & 0.003 & $-0.122$ & 0.992 & $-0.106$ & 0.880 \\
+CodeBrain & $0.206$ & 0.002 & $-0.123$ & 0.992 & $-0.108$ & 0.880 \\
+EEG-DINO S & $0.060$ & 0.024 & $-0.228$ & 0.998 & $-0.118$ & 0.895 \\
+EEG-DINO M & $0.064$ & 0.023 & $-0.113$ & 0.986 & $-0.149$ & 0.948 \\
+Signal-JEPA & $0.212$ & 0.001 & $-0.156$ & 0.998 & $-0.017$ & 0.374 \\
+REVE base & $0.198$ & 0.003 & $-0.161$ & 0.998 & $-0.334$ & 0.961 \\
+REVE large & $0.192$ & 0.003 & $-0.083$ & 0.943 & $-0.064$ & 0.672 \\
+Neuro-GPT & $0.184$ & 0.001 & $-0.081$ & 0.947 & $-0.290$ & 0.961 \\
 \bottomrule
 \end{tabular}
 \end{table}
